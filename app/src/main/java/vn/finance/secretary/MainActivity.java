@@ -2,21 +2,40 @@ package vn.finance.secretary;
 
 import android.app.*;
 import android.content.*;
-import android.graphics.Color;
 import android.os.*;
 import android.text.InputType;
 import android.view.*;
 import android.widget.*;
+import androidx.activity.OnBackPressedCallback;
+import androidx.appcompat.app.AlertDialog;
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.app.AppCompatDelegate;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
+import com.google.android.material.appbar.MaterialToolbar;
+import com.google.android.material.bottomnavigation.BottomNavigationView;
+import com.google.android.material.button.MaterialButton;
+import com.google.android.material.card.MaterialCardView;
+import com.google.android.material.color.DynamicColors;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+import com.google.android.material.textfield.TextInputEditText;
 import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
 import org.json.*;
 
-public class MainActivity extends Activity {
+public class MainActivity extends AppCompatActivity {
   private Ledger ledger;
   private SecureStore store;
   private LinearLayout root, body, chatList;
   private EditText input;
+  private final Handler draftHandler = new Handler(Looper.getMainLooper());
+  private Runnable connectionDraftSaver;
+  private MaterialToolbar toolbar;
+  private BottomNavigationView navigation;
+  private OnBackPressedCallback back;
+  private String currentScreen = "Chat", lastFailed = "", chatDraft = "";
   private final ExecutorService executor = Executors.newSingleThreadExecutor();
   private boolean busy = false;
   private String backupPassword = "";
@@ -24,11 +43,20 @@ public class MainActivity extends Activity {
 
   @Override
   public void onCreate(Bundle b) {
+    String theme = getSharedPreferences("appearance", 0).getString("theme", "system");
+    AppCompatDelegate.setDefaultNightMode(
+        theme.equals("dark")
+            ? AppCompatDelegate.MODE_NIGHT_YES
+            : theme.equals("light")
+                ? AppCompatDelegate.MODE_NIGHT_NO
+                : AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM);
+    DynamicColors.applyToActivityIfAvailable(this);
     super.onCreate(b);
-    getWindow()
-        .setFlags(
-            android.view.WindowManager.LayoutParams.FLAG_SECURE,
-            android.view.WindowManager.LayoutParams.FLAG_SECURE);
+    if (!BuildConfig.DEBUG)
+      getWindow()
+          .setFlags(
+              android.view.WindowManager.LayoutParams.FLAG_SECURE,
+              android.view.WindowManager.LayoutParams.FLAG_SECURE);
     KeyguardManager gate = (KeyguardManager) getSystemService(KEYGUARD_SERVICE);
     if (gate.isDeviceSecure()) {
       startActivityForResult(
@@ -43,9 +71,13 @@ public class MainActivity extends Activity {
       store = new SecureStore(this);
       ledger = new Ledger(store.load());
       Ledger.put(ledger.data, "schemaVersion", 1);
-      Ledger.put(ledger.data, "model", ledger.data.optString("model", Assistant.DEFAULT_MODEL));
+      String oldModel = ledger.data.optString("model", Assistant.DEFAULT_MODEL);
+      if (oldModel.equals("google/gemma-3-27b-it:free") || oldModel.isBlank()) {
+        Ledger.put(ledger.data, "model", Assistant.DEFAULT_MODEL);
+        store.save(ledger.data);
+      } else Ledger.put(ledger.data, "model", oldModel);
     } catch (Exception e) {
-      new AlertDialog.Builder(this)
+      new MaterialAlertDialogBuilder(this)
           .setTitle("Không mở được dữ liệu")
           .setMessage(
               "Dữ liệu mã hóa không đọc được. Ứng dụng không ghi đè sổ hiện có. Hãy giữ bản sao lưu"
@@ -58,59 +90,118 @@ public class MainActivity extends Activity {
     showChat();
     if (getIntent().getBooleanExtra("reports", false)) reportInbox();
     ReminderReceiver.schedule(this);
-    if (Build.VERSION.SDK_INT >= 33
-        && checkSelfPermission("android.permission.POST_NOTIFICATIONS")
-            != android.content.pm.PackageManager.PERMISSION_GRANTED)
-      requestPermissions(new String[] {"android.permission.POST_NOTIFICATIONS"}, 10);
     if (!ledger.data.has("onboarded")) onboarding();
   }
 
+  private int color(int attr) {
+    return Ui.color(this, attr);
+  }
+
   private void layout() {
+    WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+    boolean light =
+        (getResources().getConfiguration().uiMode
+                & android.content.res.Configuration.UI_MODE_NIGHT_MASK)
+            != android.content.res.Configuration.UI_MODE_NIGHT_YES;
+    WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView())
+        .setAppearanceLightStatusBars(light);
+    WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView())
+        .setAppearanceLightNavigationBars(light);
     root = new LinearLayout(this);
     root.setOrientation(LinearLayout.VERTICAL);
-    root.setPadding(dp(12), dp(12), dp(12), dp(8));
-    root.setBackgroundColor(Color.rgb(243, 247, 245));
+    root.setBackgroundColor(color(com.google.android.material.R.attr.colorSurface));
     setContentView(root);
-    root.setOnApplyWindowInsetsListener(
-        (v, insets) -> {
-          root.setPadding(
-              dp(12),
-              insets.getSystemWindowInsetTop() + dp(12),
-              dp(12),
-              insets.getSystemWindowInsetBottom() + dp(8));
-          return insets;
-        });
-    TextView title = text("THƯ KÝ TÀI CHÍNH", 21);
-    title.setTextColor(Color.rgb(8, 100, 88));
-    root.addView(title);
-    root.addView(text("Ghi sổ bằng hội thoại • Dữ liệu trên thiết bị", 12));
-    LinearLayout nav = new LinearLayout(this);
-    for (String label : List.of("Chat", "Báo cáo", "Nguồn tiền", "Cài đặt")) {
-      Button button =
-          button(
-              label,
-              () -> {
-                switch (label) {
-                  case "Chat":
-                    showChat();
-                    break;
-                  case "Báo cáo":
-                    reportDialog();
-                    break;
-                  case "Nguồn tiền":
-                    accounts();
-                    break;
-                  default:
-                    settings();
-                }
-              });
-      button.setTextSize(11);
-      nav.addView(button, new LinearLayout.LayoutParams(0, dp(56), 1));
-    }
-    root.addView(nav);
+    toolbar = new MaterialToolbar(this);
+    toolbar.setTitle("Thư ký tài chính");
+    toolbar.setSubtitle("Trò chuyện để hiểu tiền của bạn");
+    root.addView(toolbar, new LinearLayout.LayoutParams(-1, -2));
     body = new LinearLayout(this);
     body.setOrientation(LinearLayout.VERTICAL);
     root.addView(body, new LinearLayout.LayoutParams(-1, 0, 1));
+    navigation = new BottomNavigationView(this);
+    navigation.setLabelVisibilityMode(
+        com.google.android.material.navigation.NavigationBarView.LABEL_VISIBILITY_LABELED);
+    String[] labels = {"Chat", "Báo cáo", "Nguồn tiền", "Cài đặt"};
+    int[] outline = {
+      R.drawable.ic_chat_outline,
+      R.drawable.ic_bar_chart_outline,
+      R.drawable.ic_account_balance_wallet_outline,
+      R.drawable.ic_settings_outline
+    };
+    int[] filled = {
+      R.drawable.ic_chat_filled,
+      R.drawable.ic_bar_chart_filled,
+      R.drawable.ic_account_balance_wallet_filled,
+      R.drawable.ic_settings_filled
+    };
+    for (int i = 0; i < 4; i++) {
+      android.graphics.drawable.StateListDrawable icon =
+          new android.graphics.drawable.StateListDrawable();
+      icon.addState(new int[] {android.R.attr.state_checked}, getDrawable(filled[i]));
+      icon.addState(new int[] {}, getDrawable(outline[i]));
+      navigation.getMenu().add(0, i + 1, i, labels[i]).setIcon(icon);
+    }
+    root.addView(navigation, new LinearLayout.LayoutParams(-1, -2));
+    navigation.setOnItemSelectedListener(
+        item -> {
+          if (connectionDraftSaver != null && currentScreen.equals("Cài đặt")) {
+            draftHandler.removeCallbacks(connectionDraftSaver);
+            connectionDraftSaver.run();
+          }
+          if (input != null && currentScreen.equals("Chat")) chatDraft = input.getText().toString();
+          switch (item.getItemId()) {
+            case 1:
+              showChat();
+              break;
+            case 2:
+              showReport(LocalDate.now().withDayOfMonth(1), LocalDate.now());
+              break;
+            case 3:
+              accounts();
+              break;
+            default:
+              settings();
+          }
+          return true;
+        });
+    ViewCompat.setOnApplyWindowInsetsListener(
+        root,
+        (v, insets) -> {
+          androidx.core.graphics.Insets bars =
+              insets.getInsets(WindowInsetsCompat.Type.systemBars());
+          androidx.core.graphics.Insets ime = insets.getInsets(WindowInsetsCompat.Type.ime());
+          root.setPadding(bars.left, bars.top, bars.right, Math.max(bars.bottom, ime.bottom));
+          navigation.setVisibility(ime.bottom > bars.bottom ? View.GONE : View.VISIBLE);
+          return WindowInsetsCompat.CONSUMED;
+        });
+    back =
+        new OnBackPressedCallback(false) {
+          public void handleOnBackPressed() {
+            showChat();
+          }
+        };
+    getOnBackPressedDispatcher().addCallback(this, back);
+    ViewCompat.requestApplyInsets(root);
+  }
+
+  private void screen(String name, int destination) {
+    currentScreen = name;
+    if (toolbar != null) {
+      toolbar.setTitle(name.equals("Chat") ? "Thư ký tài chính" : name);
+      toolbar.setSubtitle(
+          name.equals("Chat")
+              ? (ledger.data.optString("apiKey").isBlank()
+                  ? "Ghi nhanh offline"
+                  : "OpenRouter · "
+                      + ledger
+                          .data
+                          .optString("model", Assistant.DEFAULT_MODEL)
+                          .replace("google/", ""))
+              : "Sổ cá nhân · dữ liệu trên thiết bị");
+      navigation.getMenu().findItem(destination).setChecked(true);
+    }
+    if (back != null) back.setEnabled(!name.equals("Chat"));
+    input = null;
   }
 
   private int dp(int value) {
@@ -121,14 +212,27 @@ public class MainActivity extends Activity {
     TextView t = new TextView(this);
     t.setText(value);
     t.setTextSize(size);
-    t.setTextColor(Color.rgb(29, 48, 43));
+    t.setTextColor(color(com.google.android.material.R.attr.colorOnSurface));
+    t.setLineSpacing(dp(4), 1.05f);
     t.setPadding(dp(8), dp(8), dp(8), dp(8));
     t.setTextIsSelectable(true);
     return t;
   }
 
   private Button button(String title, Runnable action) {
-    Button b = new Button(this);
+    boolean primary =
+        title.equals("Gửi")
+            || title.startsWith("Lưu")
+            || title.startsWith("Kiểm tra kết nối")
+            || title.startsWith("Xác nhận ghi");
+    Button b =
+        new MaterialButton(
+            this,
+            null,
+            primary
+                ? com.google.android.material.R.attr.materialButtonStyle
+                : com.google.android.material.R.attr.materialButtonOutlinedStyle);
+    b.setMinHeight(dp(48));
     b.setText(title);
     b.setAllCaps(false);
     b.setOnClickListener(
@@ -143,7 +247,7 @@ public class MainActivity extends Activity {
   }
 
   private EditText field(String hint, String value) {
-    EditText e = new EditText(this);
+    EditText e = new TextInputEditText(this);
     e.setHint(hint);
     e.setText(value);
     e.setTextSize(15);
@@ -151,17 +255,14 @@ public class MainActivity extends Activity {
   }
 
   private LinearLayout form() {
-    LinearLayout f = new LinearLayout(this);
-    f.setOrientation(LinearLayout.VERTICAL);
-    f.setPadding(dp(12), dp(10), dp(12), dp(10));
-    return f;
+    return new Ui.Form(this);
   }
 
   private void dialog(String title, LinearLayout content, String ok, Runnable action) {
     ScrollView scroll = new ScrollView(this);
     scroll.addView(content);
     AlertDialog d =
-        new AlertDialog.Builder(this)
+        new MaterialAlertDialogBuilder(this)
             .setTitle(title)
             .setView(scroll)
             .setNegativeButton("Đóng", null)
@@ -183,7 +284,7 @@ public class MainActivity extends Activity {
   }
 
   private void error(Exception e) {
-    new AlertDialog.Builder(this)
+    new MaterialAlertDialogBuilder(this)
         .setTitle("Chưa thực hiện")
         .setMessage(e.getMessage() == null ? "Vui lòng thử lại" : e.getMessage())
         .setPositiveButton("Đã hiểu", null)
@@ -222,9 +323,9 @@ public class MainActivity extends Activity {
         text(
             "Chỉ cần API key OpenRouter để chat tự nhiên. Model mặc định: Gemma. Bạn có thể bỏ qua"
                 + " và dùng Ghi nhanh offline.\n\n"
-                + "Khi chat AI, nội dung tin nhắn, tên nguồn tiền, danh mục và thông tin công nợ"
-                + " được gửi tới OpenRouter/model. Sổ đầy đủ không được gửi. API key được mã hóa"
-                + " trên máy.",
+                + "Khi chat AI, tin nhắn hiện tại và tối đa 5 tin nhắn gần nhất của bạn, tên nguồn"
+                + " tiền, danh mục và thông tin công nợ được gửi tới OpenRouter/model. Sổ đầy đủ"
+                + " không được gửi. API key được mã hóa trên máy.",
             15));
     EditText key = field("API key OpenRouter", "");
     key.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
@@ -236,48 +337,159 @@ public class MainActivity extends Activity {
         () -> {
           mutate(
               () -> {
-                Ledger.put(ledger.data, "apiKey", key.getText().toString().trim());
+                Ledger.put(
+                    ledger.data, "apiKey", OpenRouter.normalizeKey(key.getText().toString()));
                 Ledger.put(ledger.data, "onboarded", true);
               });
         });
   }
 
+  private MaterialCardView card(LinearLayout parent, boolean accent) {
+    MaterialCardView card = new MaterialCardView(this);
+    card.setRadius(dp(20));
+    card.setCardElevation(0);
+    card.setStrokeWidth(accent ? 0 : dp(1));
+    card.setStrokeColor(color(com.google.android.material.R.attr.colorOutlineVariant));
+    card.setCardBackgroundColor(
+        color(
+            accent
+                ? com.google.android.material.R.attr.colorPrimaryContainer
+                : com.google.android.material.R.attr.colorSurfaceContainerLow));
+    LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1, -2);
+    p.setMargins(dp(16), dp(8), dp(16), dp(8));
+    parent.addView(card, p);
+    return card;
+  }
+
+  private void bubble(JSONObject m) {
+    boolean user = m.optString("role").equals("user");
+    LinearLayout row = new LinearLayout(this);
+    row.setGravity(user ? Gravity.END : Gravity.START);
+    TextView t = text(m.optString("text"), 16);
+    t.setTextColor(
+        color(
+            user
+                ? com.google.android.material.R.attr.colorOnPrimaryContainer
+                : com.google.android.material.R.attr.colorOnSurface));
+    t.setPadding(dp(16), dp(12), dp(16), dp(12));
+    android.graphics.drawable.GradientDrawable bg =
+        new android.graphics.drawable.GradientDrawable();
+    bg.setCornerRadii(
+        new float[] {
+          dp(20),
+          dp(20),
+          dp(20),
+          dp(20),
+          dp(user ? 4 : 20),
+          dp(user ? 4 : 20),
+          dp(user ? 20 : 4),
+          dp(user ? 20 : 4)
+        });
+    bg.setColor(
+        color(
+            user
+                ? com.google.android.material.R.attr.colorPrimaryContainer
+                : com.google.android.material.R.attr.colorSurfaceContainerLow));
+    t.setBackground(bg);
+    LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-2, -2);
+    p.setMargins(user ? dp(40) : 0, dp(6), user ? 0 : dp(32), dp(6));
+    row.addView(t, p);
+    chatList.addView(row, new LinearLayout.LayoutParams(-1, -2));
+  }
+
   private void showChat() {
+    screen("Chat", 1);
     body.removeAllViews();
     ScrollView scroll = new ScrollView(this);
-    chatList = form();
+    scroll.setFillViewport(true);
+    chatList = new LinearLayout(this);
+    chatList.setOrientation(LinearLayout.VERTICAL);
+    chatList.setPadding(dp(16), dp(16), dp(16), dp(16));
     scroll.addView(chatList);
     body.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
-    if (ledger.array("chat").length() == 0)
+    if (ledger.array("chat").length() == 0) {
+      TextView heading = text("Hôm nay, tiền của bạn\nđi đâu?", 28);
+      heading.setTypeface(null, android.graphics.Typeface.BOLD);
+      chatList.addView(heading);
       chatList.addView(
           text(
-              "Chào bạn! Ví dụ: “Sáng ăn phở 45k tiền mặt”.\n"
-                  + "Tôi đề xuất nghiệp vụ để bạn xác nhận.\n\n"
-                  + "Offline: chi 50k cash ăn sáng\n"
-                  + "Lệnh: báo cáo, hoàn tác, sửa cuối <nội dung mới>\n"
-                  + "Thêm MB/MoMo/thẻ ở Nguồn tiền.",
+              "Ghi một khoản chi, hỏi về công nợ hoặc xem báo cáo. Tôi sẽ giúp bạn sắp xếp và xác"
+                  + " nhận trước khi ghi sổ.",
               16));
-    for (int i = 0; i < ledger.array("chat").length(); i++) {
-      JSONObject m = ledger.array("chat").optJSONObject(i);
       chatList.addView(
-          text(
-              (m.optString("role").equals("user") ? "Bạn: " : "Trợ lý: ") + m.optString("text"),
-              15));
+          button("Thử: Ăn phở 45k tiền mặt", () -> input.setText("Ăn phở 45k tiền mặt")));
+      chatList.addView(
+          button(
+              "Xem chi tiêu tháng này",
+              () -> {
+                input.setText("Tháng này tôi tiêu bao nhiêu?");
+                send();
+              }));
     }
-    if (ledger.data.optJSONObject("pending") != null) {
-      chatList.addView(button("Xem đề xuất chờ xác nhận", () -> confirmPending()));
+    for (int i = 0; i < ledger.array("chat").length(); i++)
+      bubble(ledger.array("chat").optJSONObject(i));
+    if (ledger.data.has("pending"))
+      chatList.addView(button("Xem đề xuất chờ xác nhận", this::confirmPending));
+    if (busy) {
+      TextView waiting = text("Trợ lý đang suy nghĩ…", 14);
+      chatList.addView(waiting);
+      ProgressBar progress = new ProgressBar(this);
+      chatList.addView(progress, new LinearLayout.LayoutParams(dp(32), dp(32)));
     }
+    if (!lastFailed.isEmpty() && !busy)
+      chatList.addView(
+          button(
+              "Thử lại tin nhắn",
+              () -> {
+                input.setText(lastFailed);
+                send();
+              }));
+    HorizontalScrollView actions = new HorizontalScrollView(this);
+    actions.setHorizontalScrollBarEnabled(false);
     LinearLayout shortcuts = new LinearLayout(this);
-    shortcuts.addView(button("Ghi nhanh", () -> quickEntry(null)));
-    shortcuts.addView(button("Nhắc hạn", () -> rules()));
-    shortcuts.addView(button("Lịch sử", () -> history()));
-    body.addView(shortcuts);
-    input = field("Nhắn bằng tiếng Việt…", "");
+    shortcuts.setPadding(dp(16), 0, dp(16), 0);
+    for (String name : List.of("Ghi nhanh", "Nhắc hạn", "Lịch sử")) {
+      Button action =
+          button(
+              name,
+              () -> {
+                switch (name) {
+                  case "Ghi nhanh":
+                    quickEntry(null);
+                    break;
+                  case "Nhắc hạn":
+                    rules();
+                    break;
+                  default:
+                    history();
+                }
+              });
+      LinearLayout.LayoutParams ap = new LinearLayout.LayoutParams(-2, dp(48));
+      ap.rightMargin = dp(8);
+      shortcuts.addView(action, ap);
+    }
+    actions.addView(shortcuts);
+    body.addView(actions);
+    LinearLayout composer = new LinearLayout(this);
+    composer.setGravity(Gravity.CENTER_VERTICAL);
+    composer.setPadding(dp(16), dp(8), dp(16), dp(12));
+    input = field("Nhắn bằng tiếng Việt…", chatDraft);
+    input.setBackgroundTintList(
+        android.content.res.ColorStateList.valueOf(
+            color(com.google.android.material.R.attr.colorPrimary)));
+    input.setMinHeight(dp(56));
     input.setMaxLines(4);
-    body.addView(input);
-    Button send = button(busy ? "Đang xử lý…" : "Gửi", () -> send());
+    input.setInputType(
+        InputType.TYPE_CLASS_TEXT
+            | InputType.TYPE_TEXT_FLAG_MULTI_LINE
+            | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
+    composer.addView(input, new LinearLayout.LayoutParams(0, -2, 1));
+    Button send = button("Gửi", this::send);
     send.setEnabled(!busy);
-    body.addView(send);
+    LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(-2, dp(52));
+    sp.leftMargin = dp(8);
+    composer.addView(send, sp);
+    body.addView(composer);
     scroll.post(() -> scroll.fullScroll(View.FOCUS_DOWN));
   }
 
@@ -301,7 +513,7 @@ public class MainActivity extends Activity {
         JSONObject p = periods.optJSONObject(i);
         names[i] = p.optString("kind") + " · " + p.optString("start") + " → " + p.optString("end");
       }
-      new AlertDialog.Builder(this)
+      new MaterialAlertDialogBuilder(this)
           .setTitle("Báo cáo tự động")
           .setItems(
               names,
@@ -375,6 +587,8 @@ public class MainActivity extends Activity {
     String replace =
         message.toLowerCase(Locale.ROOT).startsWith("sửa cuối ") ? ledger.lastRequest() : "";
     String request = UUID.randomUUID().toString();
+    chatDraft = "";
+    lastFailed = "";
     mutate(() -> chat("user", message));
     busy = true;
     showChat();
@@ -390,9 +604,16 @@ public class MainActivity extends Activity {
             } catch (Exception ai) {
               try {
                 result = Assistant.offline(prompt);
-                Ledger.put(result, "reply", "AI không sẵn có. " + result.optString("reply"));
+                Ledger.put(
+                    result,
+                    "reply",
+                    "Chưa kết nối AI: "
+                        + OpenRouter.safe(ai.getMessage(), copy.data.optString("apiKey"))
+                        + "\n\n"
+                        + "Đã đọc lệnh bằng chế độ offline. Kiểm tra đề xuất trước khi xác nhận.");
               } catch (Exception offline) {
-                throw new IllegalArgumentException("AI không sẵn có. " + offline.getMessage());
+                throw new IllegalArgumentException(
+                    OpenRouter.safe(ai.getMessage(), copy.data.optString("apiKey")));
               }
             }
             JSONObject output = result;
@@ -427,6 +648,7 @@ public class MainActivity extends Activity {
                 () -> {
                   if (isFinishing() || isDestroyed()) return;
                   busy = false;
+                  lastFailed = message;
                   mutate(() -> chat("assistant", e.getMessage()));
                   showChat();
                 });
@@ -466,69 +688,149 @@ public class MainActivity extends Activity {
   }
 
   private void confirmPending() {
-    JSONObject p = ledger.data.optJSONObject("pending");
-    if (p == null) return;
-    JSONArray actions = p.optJSONArray("actions");
-    AlertDialog d =
-        new AlertDialog.Builder(this)
-            .setTitle("Kiểm tra trước khi ghi")
-            .setMessage(preview(actions))
-            .setNegativeButton(
-                "Hủy",
-                (a, w) -> {
-                  mutate(() -> ledger.data.remove("pending"));
-                  showChat();
-                })
-            .setNeutralButton("Chỉnh JSON", (a, w) -> editPending())
-            .setPositiveButton("Xác nhận", null)
-            .create();
-    d.setOnShowListener(
-        v ->
-            d.getButton(-1)
-                .setOnClickListener(
-                    w -> {
-                      try {
-                        mutate(
-                            () -> {
-                              if (!p.optString("replace").isEmpty())
-                                ledger.replace(
-                                    p.optString("replace"), actions, p.optString("requestId"));
-                              else ledger.commit(actions, p.optString("requestId"));
-                              ledger.data.remove("pending");
-                              chat(
-                                  "assistant",
-                                  "Đã ghi "
-                                      + actions.length()
-                                      + " nghiệp vụ. Mã nhóm: "
-                                      + p.optString("requestId"));
-                            });
-                        d.dismiss();
-                        showChat();
-                      } catch (Exception e) {
-                        error(e);
-                      }
-                    }));
-    d.show();
+    JSONObject pending = ledger.data.optJSONObject("pending");
+    if (pending == null) return;
+    JSONArray actions = pending.optJSONArray("actions");
+    com.google.android.material.bottomsheet.BottomSheetDialog sheet =
+        new com.google.android.material.bottomsheet.BottomSheetDialog(this);
+    ScrollView scroll = new ScrollView(this);
+    LinearLayout f = form();
+    scroll.addView(f);
+    f.addView(text("Kiểm tra trước khi ghi", 24));
+    f.addView(text("Sổ và số dư chỉ thay đổi sau khi bạn xác nhận.", 14));
+    for (int i = 0; i < actions.length(); i++) {
+      JSONObject a = actions.optJSONObject(i);
+      MaterialCardView receipt = card(f, false);
+      LinearLayout content = form();
+      receipt.addView(content);
+      content.addView(text(Ledger.typeLabel(a.optString("type")), 14));
+      TextView value = text(Ledger.money(a.optLong("amount")), 28);
+      value.setTypeface(null, android.graphics.Typeface.BOLD);
+      content.addView(value);
+      content.addView(
+          text(
+              "Nguồn: "
+                  + a.optString("account")
+                  + (a.optString("to").isBlank() ? "" : " → " + a.optString("to"))
+                  + "\n"
+                  + a.optString("category")
+                  + " · "
+                  + a.optString("date", Ledger.today())
+                  + "\n"
+                  + a.optString("note")
+                  + (a.optLong("fee") > 0 ? "\nPhí " + Ledger.money(a.optLong("fee")) : "")
+                  + (a.optString("person").isEmpty() ? "" : "\nĐối tượng: " + a.optString("person"))
+                  + (a.optString("debtId").isEmpty() ? "" : "\nKhoản nợ: " + a.optString("debtId"))
+                  + (a.optString("due").isEmpty() ? "" : "\nHạn: " + a.optString("due")),
+              14));
+    }
+    f.addView(
+        button(
+            "Xác nhận ghi sổ",
+            () -> {
+              mutate(
+                  () -> {
+                    if (!pending.optString("replace").isEmpty())
+                      ledger.replace(
+                          pending.optString("replace"), actions, pending.optString("requestId"));
+                    else ledger.commit(actions, pending.optString("requestId"));
+                    ledger.data.remove("pending");
+                    chat(
+                        "assistant",
+                        "Đã ghi "
+                            + actions.length()
+                            + " nghiệp vụ. Bạn có thể xem và hoàn tác ở Lịch sử.");
+                  });
+              sheet.dismiss();
+              showChat();
+            }));
+    f.addView(
+        button(
+            "Chỉnh đề xuất",
+            () -> {
+              sheet.dismiss();
+              editPending();
+            }));
+    f.addView(
+        button(
+            "Hủy đề xuất",
+            () -> {
+              mutate(() -> ledger.data.remove("pending"));
+              sheet.dismiss();
+              showChat();
+            }));
+    sheet.setContentView(scroll);
+    sheet.show();
+    sheet.getBehavior().setPeekHeight((int) (getResources().getDisplayMetrics().heightPixels * .8));
   }
 
   private void editPending() {
-    JSONObject p = ledger.data.optJSONObject("pending");
-    LinearLayout f = form();
-    EditText json = field("Danh sách nghiệp vụ", p.optJSONArray("actions").toString());
-    f.addView(json);
-    dialog(
-        "Chỉnh đề xuất",
-        f,
-        "Lưu",
-        () -> {
-          try {
-            JSONArray a = new JSONArray(json.getText().toString());
-            mutate(() -> Ledger.put(p, "actions", a));
-            showChat();
-          } catch (JSONException e) {
-            throw new IllegalArgumentException("JSON không hợp lệ");
-          }
-        });
+    JSONObject pending = ledger.data.optJSONObject("pending");
+    if (pending == null) return;
+    JSONArray actions = pending.optJSONArray("actions");
+    String[] names = new String[actions.length()];
+    for (int i = 0; i < names.length; i++) {
+      JSONObject a = actions.optJSONObject(i);
+      names[i] =
+          (i + 1)
+              + ". "
+              + Ledger.typeLabel(a.optString("type"))
+              + " · "
+              + Ledger.money(a.optLong("amount"));
+    }
+    new MaterialAlertDialogBuilder(this)
+        .setTitle("Chọn khoản cần chỉnh")
+        .setItems(
+            names,
+            (d, index) -> {
+              JSONObject action = actions.optJSONObject(index);
+              LinearLayout f = form();
+              EditText amount = field("Số tiền VND", String.valueOf(action.optLong("amount"))),
+                  category = field("Danh mục", action.optString("category", "Sinh hoạt/Khác")),
+                  note = field("Nội dung", action.optString("note")),
+                  date = field("Ngày YYYY-MM-DD", action.optString("date", Ledger.today())),
+                  fee = field("Phí VND", String.valueOf(action.optLong("fee")));
+              f.addView(amount);
+              Spinner source = spinner(f, "Nguồn tiền", accountNames());
+              try {
+                source.setSelection(
+                    accountNames()
+                        .indexOf(ledger.account(action.optString("account")).optString("name")));
+              } catch (Exception ignored) {
+              }
+              Spinner to = spinner(f, "Đích (chuyển / trả thẻ)", accountNames());
+              try {
+                to.setSelection(
+                    accountNames()
+                        .indexOf(ledger.account(action.optString("to")).optString("name")));
+              } catch (Exception ignored) {
+              }
+              f.addView(category);
+              f.addView(note);
+              f.addView(date);
+              f.addView(fee);
+              dialog(
+                  "Chỉnh nghiệp vụ",
+                  f,
+                  "Lưu đề xuất",
+                  () -> {
+                    long n = Assistant.amount(amount.getText().toString()),
+                        charge = Assistant.amount(fee.getText().toString());
+                    mutate(
+                        () -> {
+                          Ledger.put(action, "amount", n);
+                          Ledger.put(action, "fee", charge);
+                          Ledger.put(action, "account", source.getSelectedItem().toString());
+                          Ledger.put(action, "to", to.getSelectedItem().toString());
+                          Ledger.put(action, "category", category.getText().toString());
+                          Ledger.put(action, "note", note.getText().toString());
+                          Ledger.put(action, "date", date.getText().toString());
+                        });
+                    showChat();
+                    confirmPending();
+                  });
+            })
+        .show();
   }
 
   private Spinner spinner(LinearLayout f, String label, List<String> items) {
@@ -633,6 +935,7 @@ public class MainActivity extends Activity {
   }
 
   private void accounts() {
+    screen("Nguồn tiền", 3);
     body.removeAllViews();
     ScrollView scroll = new ScrollView(this);
     LinearLayout f = form();
@@ -641,21 +944,23 @@ public class MainActivity extends Activity {
     for (int i = 0; i < ledger.array("accounts").length(); i++) {
       JSONObject a = ledger.array("accounts").optJSONObject(i);
       String id = a.optString("id");
-      f.addView(
+      MaterialCardView accountCard = card(f, false);
+      LinearLayout accountContent = form();
+      accountCard.addView(accountContent);
+      accountContent.addView(text(a.optString("name"), 20));
+      accountContent.addView(
           text(
-              a.optString("name")
-                  + " · "
-                  + a.optString("type")
-                  + "\n"
-                  + (a.has("checkpoint")
-                      ? "Từ mốc đối soát " + a.optString("checkpointAt")
-                      : "Biến động chưa đối soát")
-                  + ": "
-                  + Ledger.money(ledger.balance(id)),
-              16));
+              a.optString("type").equals("card")
+                  ? "Dư nợ thẻ theo sổ"
+                  : a.has("checkpoint") ? "Số dư từ mốc đối soát" : "Biến động · chưa đối soát",
+              14));
+      TextView value = text(Ledger.money(ledger.balance(id)), 28);
+      value.setTypeface(null, android.graphics.Typeface.BOLD);
+      accountContent.addView(value);
       if (a.optString("type").equals("card"))
-        f.addView(button("Sao kê theo sổ · " + a.optString("name"), () -> cardStatement(a)));
-      f.addView(
+        accountContent.addView(
+            button("Sao kê theo sổ · " + a.optString("name"), () -> cardStatement(a)));
+      accountContent.addView(
           button(
               "Đối soát " + a.optString("name"),
               () -> {
@@ -740,7 +1045,7 @@ public class MainActivity extends Activity {
             + "Đây là sao kê theo sổ đã ghi, chưa phải sao kê ngân hàng. Mốc đối soát hiện tại"
             + " không được giả làm dư nợ quá khứ. Mã giao dịch nguồn: "
             + statement.optJSONArray("eventIds");
-    new AlertDialog.Builder(this)
+    new MaterialAlertDialogBuilder(this)
         .setTitle(account.optString("name") + " · Sao kê")
         .setMessage(summary)
         .setNegativeButton("Đóng", null)
@@ -771,7 +1076,7 @@ public class MainActivity extends Activity {
   }
 
   private void undo(String id) {
-    new AlertDialog.Builder(this)
+    new MaterialAlertDialogBuilder(this)
         .setTitle("Hoàn tác cả nhóm giao dịch?")
         .setMessage(id + "\nDấu vết được giữ trong nhật ký.")
         .setNegativeButton("Đóng", null)
@@ -793,6 +1098,7 @@ public class MainActivity extends Activity {
   }
 
   private void history() {
+    screen("Lịch sử", 3);
     body.removeAllViews();
     ScrollView scroll = new ScrollView(this);
     LinearLayout f = form();
@@ -856,11 +1162,25 @@ public class MainActivity extends Activity {
   }
 
   private void showReport(LocalDate start, LocalDate end) {
+    screen("Báo cáo", 2);
     body.removeAllViews();
     ScrollView scroll = new ScrollView(this);
     LinearLayout f = form();
     scroll.addView(f);
     body.addView(scroll);
+    f.addView(button("Chọn kỳ báo cáo", this::reportDialog));
+    JSONObject totals = ledger.totals(start, end);
+    MaterialCardView summary = card(f, true);
+    LinearLayout content = form();
+    summary.addView(content);
+    content.addView(text("Chi tiêu trong kỳ", 14));
+    TextView spending = text(Ledger.money(totals.optLong("expense")), 30);
+    spending.setTypeface(null, android.graphics.Typeface.BOLD);
+    content.addView(spending);
+    content.addView(
+        text(
+            "Thu nhập " + Ledger.money(totals.optLong("income")) + " · " + start + " → " + end,
+            14));
     f.addView(text(ledger.report(start, end), 15));
     JSONObject groups = ledger.totals(start, end).optJSONObject("groups");
     long max = 1;
@@ -885,6 +1205,7 @@ public class MainActivity extends Activity {
   }
 
   private void rules() {
+    screen("Nhắc hạn", 3);
     body.removeAllViews();
     ScrollView scroll = new ScrollView(this);
     LinearLayout f = form();
@@ -974,6 +1295,7 @@ public class MainActivity extends Activity {
   }
 
   private void settings() {
+    screen("Cài đặt", 4);
     body.removeAllViews();
     ScrollView scroll = new ScrollView(this);
     LinearLayout f = form();
@@ -983,8 +1305,83 @@ public class MainActivity extends Activity {
     key.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
     EditText model =
         field("Model ID OpenRouter", ledger.data.optString("model", Assistant.DEFAULT_MODEL));
+    f.addView(text("Kết nối AI", 24));
+    f.addView(text("Key được mã hóa trên máy. Thay đổi key và model được lưu tự động.", 14));
     f.addView(key);
     f.addView(model);
+    TextView status = text("", 14);
+    f.addView(status);
+    connectionDraftSaver =
+        () -> {
+          try {
+            String normalized = OpenRouter.normalizeKey(key.getText().toString());
+            String selected = model.getText().toString().trim();
+            if (selected.isEmpty()) selected = Assistant.DEFAULT_MODEL;
+            String chosen = selected;
+            mutate(
+                () -> {
+                  Ledger.put(ledger.data, "apiKey", normalized);
+                  Ledger.put(ledger.data, "model", chosen);
+                  Ledger.put(ledger.data, "onboarded", true);
+                });
+            status.setText(
+                normalized.isEmpty()
+                    ? "Đã lưu · dùng offline"
+                    : "Đã lưu key và model · chưa kiểm tra kết nối");
+            key.setError(null);
+          } catch (Exception e) {
+            key.setError(e.getMessage());
+            status.setText(e.getMessage());
+          }
+        };
+    android.text.TextWatcher watcher =
+        new android.text.TextWatcher() {
+          public void beforeTextChanged(CharSequence a, int b, int c, int d) {}
+
+          public void onTextChanged(CharSequence a, int b, int c, int d) {}
+
+          public void afterTextChanged(android.text.Editable e) {
+            status.setText("Đang lưu…");
+            draftHandler.removeCallbacks(connectionDraftSaver);
+            draftHandler.postDelayed(connectionDraftSaver, 500);
+          }
+        };
+    key.addTextChangedListener(watcher);
+    model.addTextChangedListener(watcher);
+    Button check = button("Kiểm tra kết nối", () -> {});
+    check.setOnClickListener(
+        v -> {
+          draftHandler.removeCallbacks(connectionDraftSaver);
+          connectionDraftSaver.run();
+          String enteredKey = key.getText().toString(),
+              selectedModel = model.getText().toString().trim();
+          if (selectedModel.isEmpty()) selectedModel = Assistant.DEFAULT_MODEL;
+          String chosen = selectedModel;
+          check.setEnabled(false);
+          status.setText("Đang kiểm tra key và gọi model…");
+          executor.execute(
+              () -> {
+                try {
+                  String result = Assistant.checkConnection(enteredKey, chosen);
+                  runOnUiThread(
+                      () -> {
+                        if (isDestroyed()) return;
+                        check.setEnabled(true);
+                        status.setText(result);
+                        status.setTextColor(color(com.google.android.material.R.attr.colorPrimary));
+                      });
+                } catch (Exception e) {
+                  runOnUiThread(
+                      () -> {
+                        if (isDestroyed()) return;
+                        check.setEnabled(true);
+                        status.setText(OpenRouter.safe(e.getMessage(), enteredKey));
+                        status.setTextColor(color(com.google.android.material.R.attr.colorError));
+                      });
+                }
+              });
+        });
+    f.addView(check);
     f.addView(
         button(
             "Tải danh sách model",
@@ -995,11 +1392,17 @@ public class MainActivity extends Activity {
                       List<String> models = Assistant.models();
                       runOnUiThread(
                           () ->
-                              new AlertDialog.Builder(this)
+                              new MaterialAlertDialogBuilder(this)
                                   .setTitle("Chọn model")
                                   .setItems(
                                       models.toArray(new String[0]),
-                                      (d, w) -> model.setText(models.get(w)))
+                                      (d, w) -> {
+                                        model.setText(models.get(w));
+                                        if (connectionDraftSaver != null) {
+                                          draftHandler.removeCallbacks(connectionDraftSaver);
+                                          connectionDraftSaver.run();
+                                        }
+                                      })
                                   .show());
                     } catch (Exception e) {
                       runOnUiThread(() -> error(e));
@@ -1019,13 +1422,50 @@ public class MainActivity extends Activity {
     f.addView(hour);
     f.addView(
         button(
+            "Bật thông báo nhắc hạn",
+            () -> {
+              if (Build.VERSION.SDK_INT >= 33
+                  && checkSelfPermission("android.permission.POST_NOTIFICATIONS")
+                      != android.content.pm.PackageManager.PERMISSION_GRANTED)
+                requestPermissions(new String[] {"android.permission.POST_NOTIFICATIONS"}, 10);
+              else Toast.makeText(this, "Thông báo đã được cho phép", Toast.LENGTH_SHORT).show();
+            }));
+    f.addView(
+        button(
+            "Giao diện: theo hệ thống / sáng / tối",
+            () ->
+                new MaterialAlertDialogBuilder(this)
+                    .setTitle("Giao diện")
+                    .setSingleChoiceItems(
+                        new String[] {"Theo hệ thống", "Sáng", "Tối"},
+                        getSharedPreferences("appearance", 0)
+                                .getString("theme", "system")
+                                .equals("dark")
+                            ? 2
+                            : getSharedPreferences("appearance", 0)
+                                    .getString("theme", "system")
+                                    .equals("light")
+                                ? 1
+                                : 0,
+                        (d, w) -> {
+                          getSharedPreferences("appearance", 0)
+                              .edit()
+                              .putString("theme", new String[] {"system", "light", "dark"}[w])
+                              .apply();
+                          d.dismiss();
+                          recreate();
+                        })
+                    .show()));
+    f.addView(
+        button(
             "Lưu cài đặt",
             () -> {
               int h = Integer.parseInt(hour.getText().toString());
               if (h < 0 || h > 23) throw new IllegalArgumentException("Giờ không hợp lệ");
               mutate(
                   () -> {
-                    Ledger.put(ledger.data, "apiKey", key.getText().toString().trim());
+                    Ledger.put(
+                        ledger.data, "apiKey", OpenRouter.normalizeKey(key.getText().toString()));
                     Ledger.put(
                         ledger.data,
                         "model",
@@ -1072,7 +1512,7 @@ public class MainActivity extends Activity {
               }
               clean.remove("apiKey");
               clean.remove("pending");
-              new AlertDialog.Builder(this)
+              new MaterialAlertDialogBuilder(this)
                   .setTitle("Xuất dữ liệu riêng tư")
                   .setMessage(
                       "JSON chứa thông tin tài chính và hội thoại ở dạng đọc được. Chọn nơi lưu bạn"
@@ -1166,7 +1606,7 @@ public class MainActivity extends Activity {
         JSONObject restored = SecureStore.restore(bytes, backupPassword);
         backupPassword = "";
         new Ledger(restored);
-        new AlertDialog.Builder(this)
+        new MaterialAlertDialogBuilder(this)
             .setTitle("Thay thế dữ liệu trên máy?")
             .setMessage("Nên sao lưu sổ hiện tại trước. API key hiện tại sẽ được giữ.")
             .setNegativeButton("Hủy", null)
@@ -1196,6 +1636,10 @@ public class MainActivity extends Activity {
 
   @Override
   protected void onDestroy() {
+    if (connectionDraftSaver != null) {
+      draftHandler.removeCallbacks(connectionDraftSaver);
+      connectionDraftSaver.run();
+    }
     executor.shutdown();
     super.onDestroy();
   }

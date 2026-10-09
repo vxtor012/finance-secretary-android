@@ -1,12 +1,12 @@
 # Thư ký tài chính — Android
 
-Ứng dụng chat tiếng Việt theo [product one-page](docs/PRODUCT_ONE_PAGE.md). Không cần backend, database server hay tài khoản ứng dụng. Người dùng tải APK, nhập API key OpenRouter và chọn model; mặc định `google/gemma-3-27b-it:free`.
+Ứng dụng chat tiếng Việt theo [product one-page](docs/PRODUCT_ONE_PAGE.md). Không cần backend, database server hay tài khoản ứng dụng. Người dùng tải APK, nhập API key OpenRouter và chọn model; mặc định `google/gemma-4-26b-a4b-it:free`.
 
 ## Cài đặt
 
 1. Mở [Releases](https://github.com/vxtor012/finance-secretary-android/releases/latest), tải `finance-secretary.apk`.
 2. Android 8.0 trở lên: cho phép cài ứng dụng từ nguồn tải APK khi Android hỏi.
-3. Nhập API key OpenRouter. Model Gemma đã được chọn; danh sách model được tải trong Cài đặt.
+3. Nhập API key OpenRouter. Key và model tự lưu khi chỉnh sửa hoặc rời Cài đặt. Bấm **Kiểm tra kết nối** để kiểm tra key và gọi thử model đã chọn. Lỗi xác thực, hạn mức, chính sách hoặc model được hiển thị cụ thể.
 4. Cho phép thông báo để nhận nhắc hạn và báo cáo. Thêm MB, MoMo, thẻ ở Nguồn tiền nếu cần. Tiền mặt đã có sẵn, không bắt buộc nhập số dư ban đầu.
 
 ## Sử dụng
@@ -47,7 +47,7 @@ Kiểm thử tích hợp Android thực tế: `./gradlew assembleDebug assembleD
 - Android Java, giao diện native, không có WebView/remote frontend.
 - `Ledger`: VND số nguyên, event ledger, kiểm tra nghiệp vụ, replay, batch nguyên tử, chống trùng request ID, sửa/hoàn tác có audit trail.
 - `SecureStore`: AES-GCM + Android Keystore; atomic file thay thế nguyên trạng thái. Android cloud backup bị tắt; không log API key hay dữ liệu tài chính. Sao lưu di chuyển dùng PBKDF2-HMAC-SHA256 210.000 vòng + AES-GCM.
-- `Assistant`: HTTPS OpenRouter; model chỉ trích xuất đề xuất. App tự xác thực/tính toán. Chỉ gửi tin nhắn hiện tại, tên/bí danh tài khoản, danh mục và thông tin công nợ/nghĩa vụ; không gửi toàn bộ lịch sử/sổ hay mốc số dư.
+- `Assistant`: HTTPS OpenRouter; model chỉ trích xuất đề xuất. App tự xác thực/tính toán. Gửi tin nhắn hiện tại, tối đa 5 tin nhắn người dùng gần nhất, tên/bí danh tài khoản, danh mục và thông tin công nợ/nghĩa vụ; không gửi toàn bộ lịch sử/sổ hay mốc số dư.
 - `ReminderReceiver`: lịch thông báo theo múi giờ máy và giờ người dùng chọn; báo cáo tuần/tháng/năm cho kỳ đã kết thúc. Receiver chỉ đọc sổ, tránh xung đột ghi với Activity; metadata kỳ báo cáo không chứa số liệu tài chính.
 
 ## Giới hạn hiện tại

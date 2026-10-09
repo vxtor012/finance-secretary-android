@@ -1,5 +1,10 @@
-Ứng dụng Android 8.0+ độc lập: tải `finance-secretary.apk`, cài đặt, nhập API key OpenRouter. Mặc định Gemma 3 27B miễn phí; có thể chọn model khác trong Cài đặt.
+## v1.1.0
 
-Chat tiếng Việt với đề xuất cần xác nhận; ghi nhanh offline; nguồn tiền và mốc đối soát; chuyển khoản/phí; cho vay, đi vay, trả từng phần; mua/trả/hoàn thẻ; nghĩa vụ định kỳ; báo cáo và nhắc hạn; lịch sử/hoàn tác; sao lưu mã hóa và xuất JSON.
+- Sửa chat OpenRouter: hiển thị lỗi cụ thể thay vì thông báo offline chung; xử lý câu trả lời hội thoại, JSON và phản hồi thiếu nội dung.
+- Key và model tự lưu khi thay đổi; thêm kiểm tra kết nối gọi đúng model được chọn. Gemma 4 26B A4B miễn phí là mặc định mới.
+- Giao diện Material 3: điều hướng dưới, bong bóng hội thoại, ô nhập cố định, thẻ nguồn tiền/báo cáo, bảng xác nhận giao dịch và chế độ sáng/tối.
+- Giữ nguyên chữ ký APK để cài cập nhật trên bản cũ, giữ sổ và cấu hình đã lưu.
 
-Dữ liệu trên thiết bị, không cần backend. Sao lưu định kỳ trước khi đổi máy hoặc gỡ ứng dụng. Model miễn phí phụ thuộc khả dụng/hạn mức OpenRouter. Thông báo có thể bị Android trì hoãn khi tiết kiệm pin.
+Android 8.0+. Tải `finance-secretary.apk` rồi cài đè bản cũ. Không gỡ app trước khi cập nhật.
+
+Đã kiểm tra 25 unit tests và kiểm thử tích hợp Android 35 với phản hồi OpenRouter mô phỏng. Kiểm tra API key thực tế bằng nút **Kiểm tra kết nối** trên máy người dùng. Model miễn phí phụ thuộc khả dụng, hạn mức và chính sách của OpenRouter.

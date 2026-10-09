@@ -1,13 +1,12 @@
 package vn.finance.secretary;
 
 import java.net.*;
-import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.regex.*;
 import org.json.*;
 
 public final class Assistant {
-  public static final String DEFAULT_MODEL = "google/gemma-3-27b-it:free";
+  public static final String DEFAULT_MODEL = "google/gemma-4-26b-a4b-it:free";
 
   public static long amount(String input) {
     String s =
@@ -59,8 +58,18 @@ public final class Assistant {
             + " nhanh cho chuyển tiền, công nợ và thẻ.");
   }
 
+  interface Transport {
+    JSONObject call(String path, String key, JSONObject body) throws Exception;
+  }
+
+  static Transport transport = OpenRouter::request;
+
   public static JSONObject propose(String text, Ledger ledger) throws Exception {
-    String key = ledger.data.optString("apiKey");
+    return propose(text, ledger, transport);
+  }
+
+  static JSONObject propose(String text, Ledger ledger, Transport client) throws Exception {
+    String key = OpenRouter.normalizeKey(ledger.data.optString("apiKey"));
     if (key.isBlank()) return offline(text);
     JSONArray accounts = new JSONArray();
     for (int i = 0; i < ledger.array("accounts").length(); i++) {
@@ -86,7 +95,7 @@ public final class Assistant {
             ledger.array("categories"),
             "debts",
             ledger.obligations());
-    // Never send history, API keys or full ledger to the provider.
+    // Only bounded recent user context; never send API keys or the full ledger.
     String instruction =
         "Bạn là trợ lý tài chính Việt Nam. Chỉ trả JSON {reply:string,actions:array}. Không"
             + " markdown. Không tự tính số dư hay bịa dữ liệu. Nếu không rõ nguồn tiền, số tiền,"
@@ -106,7 +115,7 @@ public final class Assistant {
             "temperature",
             0,
             "max_tokens",
-            1800,
+            4096,
             "messages",
             new JSONArray()
                 .put(
@@ -115,59 +124,115 @@ public final class Assistant {
                         "user",
                         "content",
                         instruction + "\nTin nhắn người dùng: " + text)));
-    JSONObject response = request("chat/completions", key, body);
-    String content =
-        response
-            .getJSONArray("choices")
-            .getJSONObject(0)
-            .getJSONObject("message")
-            .getString("content")
-            .trim();
+    JSONArray history = new JSONArray();
+    JSONArray chat = ledger.array("chat");
+    for (int i = Math.max(0, chat.length() - 6); i < chat.length() - 1; i++) {
+      JSONObject turn = chat.optJSONObject(i);
+      if (turn.optString("role").equals("user"))
+        history.put(Ledger.obj("role", "user", "content", turn.optString("text")));
+    }
+    if (history.length() > 0) {
+      StringBuilder contextTurns = new StringBuilder();
+      for (int i = 0; i < history.length(); i++)
+        contextTurns.append(history.optJSONObject(i).optString("content")).append("\n");
+      body.optJSONArray("messages")
+          .optJSONObject(0)
+          .put(
+              "content",
+              instruction
+                  + "\nNgữ cảnh tin nhắn trước (chỉ để hiểu câu trả lời tiếp nối):\n"
+                  + contextTurns
+                  + "\nTin nhắn hiện tại: "
+                  + text);
+    }
+    String model = ledger.data.optString("model", DEFAULT_MODEL);
+    if (model.startsWith("google/gemma-"))
+      Ledger.put(body, "response_format", Ledger.obj("type", "json_object"));
+    if (model.startsWith("google/gemma-4"))
+      Ledger.put(body, "reasoning", Ledger.obj("enabled", false));
+    return parseCompletion(client.call("chat/completions", key, body));
+  }
+
+  public static JSONObject parseCompletion(JSONObject response) throws Exception {
+    if (response.optJSONObject("error") != null)
+      return OpenRouter.decode(200, response.toString(), "");
+    JSONArray choices = response.optJSONArray("choices");
+    if (choices == null || choices.length() == 0)
+      throw new java.io.IOException(
+          "Model không trả câu trả lời. Vui lòng thử lại hoặc đổi model.");
+    JSONObject choice = choices.getJSONObject(0), message = choice.optJSONObject("message");
+    if (message == null) throw new java.io.IOException("Model trả phản hồi thiếu nội dung.");
+    String content = message.optString("content", "").trim();
+    if (content.isEmpty() || content.equals("null"))
+      throw new java.io.IOException(
+          choice.optString("finish_reason").equals("length")
+              ? "Model đã dùng hết giới hạn token trước khi trả lời. Thử lại hoặc chọn model khác."
+              : "Model trả nội dung rỗng. Thử lại hoặc đổi model.");
+    if (choice.optString("finish_reason").equals("length"))
+      throw new java.io.IOException(
+          "Phản hồi bị cắt do giới hạn token. Hãy chia tin nhắn thành ít giao dịch hơn.");
     if (content.startsWith("```"))
       content = content.replaceFirst("^```(?:json)?\\s*", "").replaceFirst("\\s*```$", "");
-    JSONObject out = new JSONObject(content);
-    if (out.optJSONArray("actions") == null || out.optJSONArray("actions").length() > 20)
-      throw new IllegalArgumentException("Model trả dữ liệu không hợp lệ");
-    return out;
+    int first = content.indexOf('{'), last = content.lastIndexOf('}');
+    if (first >= 0 && last > first) {
+      JSONObject out;
+      try {
+        out = new JSONObject(content.substring(first, last + 1));
+      } catch (JSONException e) {
+        throw new java.io.IOException(
+            "Model trả cấu trúc giao dịch không hợp lệ. Chưa ghi tiền; hãy thử lại.");
+      }
+      if (!(out.opt("reply") instanceof String)
+          || out.optString("reply").isBlank()
+          || out.optJSONArray("actions") == null
+          || out.optJSONArray("actions").length() > 20)
+        throw new java.io.IOException(
+            "Model trả cấu trúc thiếu reply/actions. Chưa ghi tiền; hãy thử lại.");
+      for (int i = 0; i < out.optJSONArray("actions").length(); i++)
+        if (out.optJSONArray("actions").optJSONObject(i) == null)
+          throw new java.io.IOException("Đề xuất giao dịch sai định dạng. Chưa ghi tiền.");
+      return out;
+    }
+    if (content.startsWith("{") || content.startsWith("["))
+      throw new java.io.IOException("Phản hồi JSON chưa hoàn chỉnh. Chưa ghi tiền; hãy thử lại.");
+    // A conversational answer is safe to display, but never inferred as a financial mutation.
+    return Ledger.obj("reply", content, "actions", new JSONArray());
+  }
+
+  public static String checkConnection(String key, String model) throws Exception {
+    key = OpenRouter.normalizeKey(key);
+    if (key.isEmpty()) throw new IllegalArgumentException("Hãy nhập API key trước.");
+    transport.call("key", key, null);
+    JSONObject body =
+        Ledger.obj(
+            "model",
+            model,
+            "max_tokens",
+            512,
+            "messages",
+            new JSONArray()
+                .put(Ledger.obj("role", "user", "content", "Chỉ trả lời: Kết nối thành công.")));
+    if (model.startsWith("google/gemma-4"))
+      Ledger.put(body, "reasoning", Ledger.obj("enabled", false));
+    parseCompletion(transport.call("chat/completions", key, body));
+    return "Kết nối thành công với " + model + ". Key và model đã trả lời được.";
   }
 
   public static List<String> models() throws Exception {
-    JSONArray items = request("models", "", null).getJSONArray("data");
+    JSONArray items = transport.call("models", "", null).getJSONArray("data");
     List<String> result = new ArrayList<>();
-    result.add(DEFAULT_MODEL);
+
     for (int i = 0; i < items.length(); i++) {
       String id = items.getJSONObject(i).getString("id");
       if (!result.contains(id)) result.add(id);
     }
+    result.sort((a, b) -> Integer.compare(modelRank(a), modelRank(b)));
     return result;
   }
 
-  private static JSONObject request(String path, String key, JSONObject body) throws Exception {
-    HttpURLConnection c =
-        (HttpURLConnection) new URL("https://openrouter.ai/api/v1/" + path).openConnection();
-    c.setConnectTimeout(15000);
-    c.setReadTimeout(60000);
-    c.setRequestProperty("Content-Type", "application/json");
-    if (!key.isBlank()) c.setRequestProperty("Authorization", "Bearer " + key);
-    c.setRequestProperty("X-Title", "Finance Secretary Android");
-    try {
-      if (body != null) {
-        c.setRequestMethod("POST");
-        c.setDoOutput(true);
-        try (var out = c.getOutputStream()) {
-          out.write(body.toString().getBytes(StandardCharsets.UTF_8));
-        }
-      }
-      int status = c.getResponseCode();
-      if (status != 200)
-        throw new java.io.IOException(
-            "OpenRouter HTTP " + status + ". Kiểm tra key, hạn mức hoặc đổi model.");
-      try (var in = c.getInputStream()) {
-        return new JSONObject(
-            new String(Streams.readLimited(in, 2_000_000), StandardCharsets.UTF_8));
-      }
-    } finally {
-      c.disconnect();
-    }
+  private static int modelRank(String id) {
+    return id.equals(DEFAULT_MODEL)
+        ? 0
+        : id.contains("gemma") && id.endsWith(":free") ? 1 : id.endsWith(":free") ? 2 : 3;
   }
 }
