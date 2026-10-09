@@ -5,6 +5,14 @@ on:
     tags: ['v*']
   pull_request:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing version tag to build and release (optional)
+        required: false
+        type: string
+concurrency:
+  group: android-${{ inputs.release_tag || github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
@@ -12,6 +20,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_tag || github.ref }}
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -30,13 +40,15 @@ jobs:
             app/build/reports/tests/
             app/build/reports/lint-results-debug.html
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || startsWith(inputs.release_tag, 'v')
     needs: [checks, device-test]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_tag || github.ref }}
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -66,12 +78,15 @@ jobs:
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" finance-secretary.apk SHA256SUMS.txt --title "Thư ký tài chính $GITHUB_REF_NAME" --notes-file docs/RELEASE_NOTES.md
+          RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
+        run: gh release create "$RELEASE_TAG" finance-secretary.apk SHA256SUMS.txt --title "Thư ký tài chính $RELEASE_TAG" --notes-file docs/RELEASE_NOTES.md
   device-test:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_tag || github.ref }}
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -86,15 +101,18 @@ jobs:
       - name: Android 35 integration smoke test
         run: |
           sdkmanager 'emulator' 'system-images;android-35;default;x86_64'
-          echo no | avdmanager create avd --name finance-test --package 'system-images;android-35;default;x86_64' --force
+          export ANDROID_AVD_HOME="$RUNNER_TEMP/finance-avd"
+          mkdir -p "$ANDROID_AVD_HOME"
+          echo no | avdmanager create avd --name finance-test --path "$ANDROID_AVD_HOME/finance-test.avd" --package 'system-images;android-35;default;x86_64' --force
+          test -f "$ANDROID_AVD_HOME/finance-test.ini"
           sudo chmod 666 /dev/kvm
           "$ANDROID_HOME/emulator/emulator" -avd finance-test -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot > /tmp/emulator.log 2>&1 &
-          adb wait-for-device
+          timeout 120 adb wait-for-device || { cat /tmp/emulator.log; exit 1; }
           for i in $(seq 1 120); do
             if [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = 1 ]; then break; fi
             sleep 3
           done
-          test "$(adb shell getprop sys.boot_completed | tr -d '\r')" = 1
+          test "$(adb shell getprop sys.boot_completed | tr -d '\r')" = 1 || { cat /tmp/emulator.log; exit 1; }
           sleep 15
           adb shell input keyevent 82
           adb install -r app/build/outputs/apk/debug/app-debug.apk
