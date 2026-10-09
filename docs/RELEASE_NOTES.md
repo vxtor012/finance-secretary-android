@@ -1,10 +1,10 @@
-## v1.1.1
+## v1.2.0
 
-- Sửa chat OpenRouter: hiển thị lỗi cụ thể thay vì thông báo offline chung; xử lý câu trả lời hội thoại, JSON và phản hồi thiếu nội dung.
-- Key và model tự lưu khi thay đổi; thêm kiểm tra kết nối gọi đúng model được chọn. Gemma 4 26B A4B miễn phí là mặc định mới.
-- Giao diện Material 3: điều hướng dưới, bong bóng hội thoại, ô nhập cố định, thẻ nguồn tiền/báo cáo, bảng xác nhận giao dịch và chế độ sáng/tối.
-- Giữ nguyên chữ ký APK để cài cập nhật trên bản cũ, giữ sổ và cấu hình đã lưu.
+- Chuyển hoàn toàn sang Google AI Studio/Gemini API, mặc định Gemma 4 26B A4B. Danh sách model dùng key Google và lọc model hỗ trợ chat.
+- Cài đè giữ sổ, nguồn tiền và đề xuất đang chờ. Nhập key Google mới trong Cài đặt; key OpenRouter cũ được bỏ khỏi cấu hình.
+- Giao diện tối giản: nền trung tính, trợ lý không có khung bong bóng, ô nhập liền khối, nút gửi biểu tượng; thao tác phụ gom vào nút +. Nguồn tiền dạng danh sách và báo cáo mở chi tiết khi cần.
+- Chat chỉ giữ 5 tin gần nhất. + → Xóa hội thoại giữ nguyên dữ liệu tài chính và đề xuất đang chờ.
 
-Android 8.0+. Tải `finance-secretary.apk` rồi cài đè bản cũ. Không gỡ app trước khi cập nhật.
+Android 8.0+. Cài đè `finance-secretary.apk`, không gỡ app cũ. Key và model tự lưu. Bấm Kiểm tra kết nối để xác nhận key/model trên máy bạn.
 
-Đã kiểm tra 25 unit tests và kiểm thử tích hợp Android 35 với phản hồi OpenRouter mô phỏng. Kiểm tra API key thực tế bằng nút **Kiểm tra kết nối** trên máy người dùng. Model miễn phí phụ thuộc khả dụng, hạn mức và chính sách của OpenRouter.
+28 unit tests và kiểm thử tích hợp Android 35 với phản hồi Google mô phỏng. Không có key thật của người dùng để xác nhận chat trực tiếp; lỗi key giả được kiểm tra qua Google thật. Google AI Studio áp dụng hạn mức riêng cho từng key/model.

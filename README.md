@@ -1,12 +1,14 @@
 # Thư ký tài chính — Android
 
-Ứng dụng chat tiếng Việt theo [product one-page](docs/PRODUCT_ONE_PAGE.md). Không cần backend, database server hay tài khoản ứng dụng. Người dùng tải APK, nhập API key OpenRouter và chọn model; mặc định `google/gemma-4-26b-a4b-it:free`.
+Ứng dụng chat tiếng Việt theo [product one-page](docs/PRODUCT_ONE_PAGE.md). Không cần backend, database server hay tài khoản ứng dụng. Người dùng tải APK, nhập API key Google AI Studio và chọn model; mặc định `gemma-4-26b-a4b-it`.
+
+Bản 1.2 chuyển hoàn toàn sang Google AI Studio. Cài đè bản cũ giữ sổ, rồi nhập key Google mới; key OpenRouter không được dùng lại.
 
 ## Cài đặt
 
 1. Mở [Releases](https://github.com/vxtor012/finance-secretary-android/releases/latest), tải `finance-secretary.apk`.
 2. Android 8.0 trở lên: cho phép cài ứng dụng từ nguồn tải APK khi Android hỏi.
-3. Nhập API key OpenRouter. Key và model tự lưu khi chỉnh sửa hoặc rời Cài đặt. Bấm **Kiểm tra kết nối** để kiểm tra key và gọi thử model đã chọn. Lỗi xác thực, hạn mức, chính sách hoặc model được hiển thị cụ thể.
+3. Nhập API key Google AI Studio. Key và model tự lưu khi chỉnh sửa hoặc rời Cài đặt. Bấm **Kiểm tra kết nối** để kiểm tra key và gọi thử model đã chọn. Lỗi xác thực, hạn mức, chính sách hoặc model được hiển thị cụ thể.
 4. Cho phép thông báo để nhận nhắc hạn và báo cáo. Thêm MB, MoMo, thẻ ở Nguồn tiền nếu cần. Tiền mặt đã có sẵn, không bắt buộc nhập số dư ban đầu.
 
 ## Sử dụng
@@ -44,14 +46,14 @@ Kiểm thử tích hợp Android thực tế: `./gradlew assembleDebug assembleD
 
 ## Kiến trúc và quyền riêng tư
 
-- Android Java, giao diện native, không có WebView/remote frontend.
+- Android Java, giao diện native tối giản, không có WebView/remote frontend. Chat chỉ giữ 5 tin gần nhất; nút + → Xóa hội thoại dọn chat và giữ nguyên giao dịch/đề xuất chờ xác nhận.
 - `Ledger`: VND số nguyên, event ledger, kiểm tra nghiệp vụ, replay, batch nguyên tử, chống trùng request ID, sửa/hoàn tác có audit trail.
 - `SecureStore`: AES-GCM + Android Keystore; atomic file thay thế nguyên trạng thái. Android cloud backup bị tắt; không log API key hay dữ liệu tài chính. Sao lưu di chuyển dùng PBKDF2-HMAC-SHA256 210.000 vòng + AES-GCM.
-- `Assistant`: HTTPS OpenRouter; model chỉ trích xuất đề xuất. App tự xác thực/tính toán. Gửi tin nhắn hiện tại, tối đa 5 tin nhắn người dùng gần nhất, tên/bí danh tài khoản, danh mục và thông tin công nợ/nghĩa vụ; không gửi toàn bộ lịch sử/sổ hay mốc số dư.
+- `Assistant`: HTTPS Google AI Studio; model chỉ trích xuất đề xuất. App tự xác thực/tính toán. Gửi tin nhắn hiện tại, tối đa 5 tin nhắn người dùng gần nhất, tên/bí danh tài khoản, danh mục và thông tin công nợ/nghĩa vụ; không gửi toàn bộ lịch sử/sổ hay mốc số dư.
 - `ReminderReceiver`: lịch thông báo theo múi giờ máy và giờ người dùng chọn; báo cáo tuần/tháng/năm cho kỳ đã kết thúc. Receiver chỉ đọc sổ, tránh xung đột ghi với Activity; metadata kỳ báo cáo không chứa số liệu tài chính.
 
 ## Giới hạn hiện tại
 
-Phiên bản đầu là app cho một người trên thiết bị Android, chưa đồng bộ nhiều thiết bị hay ngân hàng. Thẻ hiển thị dư nợ, sao kê theo giao dịch từng kỳ và ngày sao kê/hạn trả; không nhập hoặc khớp sao kê ngân hàng tự động. Số dư quá khứ trong báo cáo là dòng tiền kỳ; phần nguồn tiền thể hiện số dư hiện tại từ mốc đối soát, không giả làm số dư cuối kỳ cũ. Thông báo Android là lịch không chính xác tuyệt đối; force-stop app sẽ ngừng nhắc đến khi mở lại. App yêu cầu xác thực khóa màn hình khi mở nếu thiết bị đã đặt khóa; chưa có PIN riêng. AI miễn phí phụ thuộc OpenRouter; app không tự chuyển sang model tính phí.
+Phiên bản đầu là app cho một người trên thiết bị Android, chưa đồng bộ nhiều thiết bị hay ngân hàng. Thẻ hiển thị dư nợ, sao kê theo giao dịch từng kỳ và ngày sao kê/hạn trả; không nhập hoặc khớp sao kê ngân hàng tự động. Số dư quá khứ trong báo cáo là dòng tiền kỳ; phần nguồn tiền thể hiện số dư hiện tại từ mốc đối soát, không giả làm số dư cuối kỳ cũ. Thông báo Android là lịch không chính xác tuyệt đối; force-stop app sẽ ngừng nhắc đến khi mở lại. App yêu cầu xác thực khóa màn hình khi mở nếu thiết bị đã đặt khóa; chưa có PIN riêng. AI miễn phí phụ thuộc Google AI Studio; app không tự đổi model.
 
 Đặc tả gốc loại app native khỏi MVP; yêu cầu triển khai Android trong cuộc trao đổi này thay thế giới hạn đó. Các chức năng ngoài phạm vi khác giữ theo tài liệu gốc.

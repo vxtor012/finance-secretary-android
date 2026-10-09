@@ -30,6 +30,15 @@ final class Ui {
         box.setHint(e.getHint());
         e.setHint(null);
         box.setBoxBackgroundMode(TextInputLayout.BOX_BACKGROUND_OUTLINE);
+        box.setBoxStrokeWidth(0);
+        box.setBoxStrokeWidthFocused(dp(getContext(), 1));
+        box.setBoxBackgroundColor(
+            color(getContext(), com.google.android.material.R.attr.colorSurfaceContainerLow));
+        box.setBoxCornerRadii(
+            dp(getContext(), 14), dp(getContext(), 14), dp(getContext(), 14), dp(getContext(), 14));
+        e.setBackground(null);
+        e.setPadding(
+            dp(getContext(), 16), dp(getContext(), 16), dp(getContext(), 16), dp(getContext(), 16));
         box.addView(e, new LinearLayout.LayoutParams(-1, -2));
         LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1, -2);
         p.bottomMargin = dp(getContext(), 16);

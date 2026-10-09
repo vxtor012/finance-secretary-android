@@ -8,7 +8,7 @@ import org.json.*;
 /**
  * HTTPS adapter with actionable, redacted errors, including error bodies returned with HTTP 200.
  */
-public final class OpenRouter {
+public final class GoogleAi {
   public static final class ApiException extends IOException {
     public final int status;
 
@@ -24,13 +24,15 @@ public final class OpenRouter {
     if (key.contains("\n") || key.contains("\r") || key.contains(" "))
       throw new IllegalArgumentException(
           "API key có khoảng trắng hoặc xuống dòng ở giữa. Hãy dán lại toàn bộ key.");
+    if (key.startsWith("sk-or-"))
+      throw new IllegalArgumentException("Hãy nhập key Google AI Studio thay cho key OpenRouter.");
     return key;
   }
 
   public static String safe(String message, String key) {
     if (message == null || message.isBlank()) return "Không có chi tiết từ nhà cung cấp.";
     if (key != null && !key.isEmpty()) message = message.replace(key, "[key đã ẩn]");
-    message = message.replaceAll("sk-or-[A-Za-z0-9_-]+", "[key đã ẩn]");
+    message = message.replaceAll("AIza[A-Za-z0-9_-]+", "[key đã ẩn]");
     return message.length() > 600 ? message.substring(0, 600) + "…" : message;
   }
 
@@ -40,7 +42,7 @@ public final class OpenRouter {
       response = new JSONObject(raw);
     } catch (JSONException e) {
       if (status < 200 || status >= 300) throw error(status, "", key);
-      throw new IOException("OpenRouter trả phản hồi không phải JSON. Vui lòng thử lại.");
+      throw new IOException("Google trả phản hồi không phải JSON. Vui lòng thử lại.");
     }
     JSONObject problem = response.optJSONObject("error");
     if (status < 200 || status >= 300 || problem != null)
@@ -54,26 +56,25 @@ public final class OpenRouter {
   private static ApiException error(int code, String detail, String key) {
     String hint =
         switch (code) {
-          case 400 -> "Yêu cầu không được model hỗ trợ. Thử chọn model khác.";
+          case 400 -> "Key hoặc yêu cầu không hợp lệ. Kiểm tra key AI Studio và model đã chọn.";
           case 401 ->
               "API key không hợp lệ, đã bị thu hồi hoặc chưa được lưu. Dán lại key trong Cài đặt.";
           case 402 ->
-              "Key hoặc tài khoản không đủ hạn mức. Kiểm tra hạn mức OpenRouter hoặc chọn model"
+              "Key hoặc tài khoản không đủ hạn mức. Kiểm tra hạn mức AI Studio hoặc chọn model"
                   + " miễn phí.";
           case 403 ->
-              "OpenRouter từ chối quyền truy cập. Kiểm tra quyền của key và cài đặt quyền riêng"
-                  + " tư/routing trên OpenRouter.";
-          case 404 ->
-              "Model không còn khả dụng hoặc không có provider phù hợp. Tải lại danh sách model.";
+              "Google từ chối quyền truy cập. Kiểm tra quyền Gemini API của key trên AI Studio.";
+          case 404 -> "Model chưa khả dụng với key này. Tải lại danh sách model.";
           case 408, 504 -> "Model phản hồi quá chậm. Thử lại hoặc chọn model khác.";
-          case 429 -> "Đã chạm giới hạn lượt gọi của key/model. Chờ một lúc rồi thử lại.";
+          case 429 ->
+              "Đã chạm hạn mức Google AI. Chờ rồi thử lại, hoặc kiểm tra quota trong AI Studio.";
           case 502, 503 ->
               "Provider của model đang lỗi hoặc không khả dụng. Thử lại hoặc đổi model.";
-          default -> "Không hoàn thành được yêu cầu OpenRouter. Thử lại hoặc kiểm tra kết nối.";
+          default -> "Không hoàn thành được yêu cầu Google AI. Thử lại hoặc kiểm tra kết nối.";
         };
     return new ApiException(
         code,
-        "OpenRouter HTTP "
+        "Google AI HTTP "
             + code
             + "\n"
             + hint
@@ -83,12 +84,12 @@ public final class OpenRouter {
   public static JSONObject request(String path, String inputKey, JSONObject body) throws Exception {
     String key = normalizeKey(inputKey);
     HttpURLConnection c =
-        (HttpURLConnection) new URL("https://openrouter.ai/api/v1/" + path).openConnection();
+        (HttpURLConnection)
+            new URL("https://generativelanguage.googleapis.com/v1beta/" + path).openConnection();
     c.setConnectTimeout(15000);
     c.setReadTimeout(90000);
     c.setRequestProperty("Content-Type", "application/json; charset=utf-8");
-    if (!key.isEmpty()) c.setRequestProperty("Authorization", "Bearer " + key);
-    c.setRequestProperty("X-Title", "Finance Secretary Android");
+    if (!key.isEmpty()) c.setRequestProperty("x-goog-api-key", key);
     try {
       if (body != null) {
         c.setRequestMethod("POST");
@@ -108,8 +109,7 @@ public final class OpenRouter {
     } catch (SocketTimeoutException e) {
       throw new IOException("Kết nối/model quá thời gian chờ. Kiểm tra mạng hoặc thử model khác.");
     } catch (UnknownHostException | ConnectException e) {
-      throw new IOException(
-          "Không kết nối được OpenRouter. Kiểm tra internet hoặc VPN trên thiết bị.");
+      throw new IOException("Không kết nối được Google. Kiểm tra internet hoặc VPN trên thiết bị.");
     } finally {
       c.disconnect();
     }

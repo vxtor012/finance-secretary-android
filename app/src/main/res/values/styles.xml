@@ -5,5 +5,6 @@
     <item name="colorSecondaryContainer">@color/brand_container</item><item name="colorOnSecondaryContainer">@color/brand_on_container</item>
     <item name="android:fontFamily">sans</item><item name="android:statusBarColor">@android:color/transparent</item><item name="android:navigationBarColor">@android:color/transparent</item>
     <item name="textInputStyle">@style/Widget.Material3.TextInputLayout.OutlinedBox</item>
+  <item name="colorSurface">@color/app_surface</item><item name="colorSurfaceContainerLow">@color/app_surface_low</item><item name="colorSurfaceContainerHigh">@color/app_surface_high</item><item name="colorOnSurface">@color/app_on_surface</item><item name="colorOnSurfaceVariant">@color/app_secondary_text</item>
   </style>
 </resources>

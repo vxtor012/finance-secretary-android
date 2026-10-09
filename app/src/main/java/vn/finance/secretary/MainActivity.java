@@ -17,7 +17,6 @@ import com.google.android.material.appbar.MaterialToolbar;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.card.MaterialCardView;
-import com.google.android.material.color.DynamicColors;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.textfield.TextInputEditText;
 import java.time.*;
@@ -50,7 +49,7 @@ public class MainActivity extends AppCompatActivity {
             : theme.equals("light")
                 ? AppCompatDelegate.MODE_NIGHT_NO
                 : AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM);
-    DynamicColors.applyToActivityIfAvailable(this);
+
     super.onCreate(b);
     if (!BuildConfig.DEBUG)
       getWindow()
@@ -71,11 +70,8 @@ public class MainActivity extends AppCompatActivity {
       store = new SecureStore(this);
       ledger = new Ledger(store.load());
       Ledger.put(ledger.data, "schemaVersion", 1);
-      String oldModel = ledger.data.optString("model", Assistant.DEFAULT_MODEL);
-      if (oldModel.equals("google/gemma-3-27b-it:free") || oldModel.isBlank()) {
-        Ledger.put(ledger.data, "model", Assistant.DEFAULT_MODEL);
-        store.save(ledger.data);
-      } else Ledger.put(ledger.data, "model", oldModel);
+      Assistant.migrateProvider(ledger);
+      store.save(ledger.data);
     } catch (Exception e) {
       new MaterialAlertDialogBuilder(this)
           .setTitle("Không mở được dữ liệu")
@@ -117,8 +113,13 @@ public class MainActivity extends AppCompatActivity {
     root.addView(toolbar, new LinearLayout.LayoutParams(-1, -2));
     body = new LinearLayout(this);
     body.setOrientation(LinearLayout.VERTICAL);
-    root.addView(body, new LinearLayout.LayoutParams(-1, 0, 1));
+    LinearLayout.LayoutParams bodySize =
+        new LinearLayout.LayoutParams(
+            Math.min(getResources().getDisplayMetrics().widthPixels, dp(640)), 0, 1);
+    bodySize.gravity = Gravity.CENTER_HORIZONTAL;
+    root.addView(body, bodySize);
     navigation = new BottomNavigationView(this);
+    navigation.setBackgroundColor(color(com.google.android.material.R.attr.colorSurface));
     navigation.setLabelVisibilityMode(
         com.google.android.material.navigation.NavigationBarView.LABEL_VISIBILITY_LABELED);
     String[] labels = {"Chat", "Báo cáo", "Nguồn tiền", "Cài đặt"};
@@ -187,17 +188,8 @@ public class MainActivity extends AppCompatActivity {
   private void screen(String name, int destination) {
     currentScreen = name;
     if (toolbar != null) {
-      toolbar.setTitle(name.equals("Chat") ? "Thư ký tài chính" : name);
-      toolbar.setSubtitle(
-          name.equals("Chat")
-              ? (ledger.data.optString("apiKey").isBlank()
-                  ? "Ghi nhanh offline"
-                  : "OpenRouter · "
-                      + ledger
-                          .data
-                          .optString("model", Assistant.DEFAULT_MODEL)
-                          .replace("google/", ""))
-              : "Sổ cá nhân · dữ liệu trên thiết bị");
+      toolbar.setTitle(name.equals("Chat") ? "Sổ của bạn" : name);
+      toolbar.setSubtitle(null);
       navigation.getMenu().findItem(destination).setChecked(true);
     }
     if (back != null) back.setEnabled(!name.equals("Chat"));
@@ -213,7 +205,7 @@ public class MainActivity extends AppCompatActivity {
     t.setText(value);
     t.setTextSize(size);
     t.setTextColor(color(com.google.android.material.R.attr.colorOnSurface));
-    t.setLineSpacing(dp(4), 1.05f);
+    t.setLineSpacing(dp(3), 1.05f);
     t.setPadding(dp(8), dp(8), dp(8), dp(8));
     t.setTextIsSelectable(true);
     return t;
@@ -231,10 +223,39 @@ public class MainActivity extends AppCompatActivity {
             null,
             primary
                 ? com.google.android.material.R.attr.materialButtonStyle
-                : com.google.android.material.R.attr.materialButtonOutlinedStyle);
+                : com.google.android.material.R.attr.borderlessButtonStyle);
     b.setMinHeight(dp(48));
+    if (!primary) {
+      b.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
+      b.setPadding(dp(16), 0, dp(16), 0);
+    }
     b.setText(title);
     b.setAllCaps(false);
+    b.setOnClickListener(
+        v -> {
+          try {
+            action.run();
+          } catch (Exception e) {
+            error(e);
+          }
+        });
+    return b;
+  }
+
+  private MaterialButton iconButton(String label, int icon, Runnable action) {
+    MaterialButton b =
+        new MaterialButton(this, null, com.google.android.material.R.attr.borderlessButtonStyle);
+    b.setContentDescription(label);
+    b.setIconResource(icon);
+    b.setIconSize(dp(22));
+    b.setIconPadding(0);
+    b.setIconGravity(MaterialButton.ICON_GRAVITY_TEXT_START);
+    b.setMinWidth(0);
+    b.setMinimumWidth(0);
+    b.setPadding(dp(13), 0, dp(13), 0);
+    b.setInsetTop(0);
+    b.setInsetBottom(0);
+    b.setCornerRadius(dp(24));
     b.setOnClickListener(
         v -> {
           try {
@@ -319,16 +340,21 @@ public class MainActivity extends AppCompatActivity {
 
   private void onboarding() {
     LinearLayout f = form();
+    f.addView(text("Dán key Google AI Studio để bắt đầu. Bạn có thể bỏ qua và ghi offline.", 16));
     f.addView(
-        text(
-            "Chỉ cần API key OpenRouter để chat tự nhiên. Model mặc định: Gemma. Bạn có thể bỏ qua"
-                + " và dùng Ghi nhanh offline.\n\n"
-                + "Khi chat AI, tin nhắn hiện tại và tối đa 5 tin nhắn gần nhất của bạn, tên nguồn"
-                + " tiền, danh mục và thông tin công nợ được gửi tới OpenRouter/model. Sổ đầy đủ"
-                + " không được gửi. API key được mã hóa trên máy.",
-            15));
-    EditText key = field("API key OpenRouter", "");
+        button(
+            "Dữ liệu gửi tới Google",
+            () ->
+                new MaterialAlertDialogBuilder(this)
+                    .setMessage(
+                        "Google nhận tối đa 5 tin nhắn gần nhất và ngữ cảnh tài khoản/công nợ. Sổ"
+                            + " đầy đủ không được gửi; key được mã hóa trên máy.")
+                    .setPositiveButton("Đóng", null)
+                    .show()));
+    EditText key = field("Key AI Studio", "");
     key.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+    key.setTypeface(
+        android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.NORMAL));
     f.addView(key);
     dialog(
         "Bắt đầu",
@@ -337,8 +363,7 @@ public class MainActivity extends AppCompatActivity {
         () -> {
           mutate(
               () -> {
-                Ledger.put(
-                    ledger.data, "apiKey", OpenRouter.normalizeKey(key.getText().toString()));
+                Ledger.put(ledger.data, "apiKey", GoogleAi.normalizeKey(key.getText().toString()));
                 Ledger.put(ledger.data, "onboarded", true);
               });
         });
@@ -346,17 +371,17 @@ public class MainActivity extends AppCompatActivity {
 
   private MaterialCardView card(LinearLayout parent, boolean accent) {
     MaterialCardView card = new MaterialCardView(this);
-    card.setRadius(dp(20));
+    card.setRadius(dp(16));
     card.setCardElevation(0);
-    card.setStrokeWidth(accent ? 0 : dp(1));
+    card.setStrokeWidth(0);
     card.setStrokeColor(color(com.google.android.material.R.attr.colorOutlineVariant));
     card.setCardBackgroundColor(
         color(
             accent
-                ? com.google.android.material.R.attr.colorPrimaryContainer
-                : com.google.android.material.R.attr.colorSurfaceContainerLow));
+                ? com.google.android.material.R.attr.colorSurfaceContainerHigh
+                : com.google.android.material.R.attr.colorSurface));
     LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1, -2);
-    p.setMargins(dp(16), dp(8), dp(16), dp(8));
+    p.setMargins(0, dp(8), 0, dp(8));
     parent.addView(card, p);
     return card;
   }
@@ -369,7 +394,7 @@ public class MainActivity extends AppCompatActivity {
     t.setTextColor(
         color(
             user
-                ? com.google.android.material.R.attr.colorOnPrimaryContainer
+                ? com.google.android.material.R.attr.colorOnSurface
                 : com.google.android.material.R.attr.colorOnSurface));
     t.setPadding(dp(16), dp(12), dp(16), dp(12));
     android.graphics.drawable.GradientDrawable bg =
@@ -388,9 +413,9 @@ public class MainActivity extends AppCompatActivity {
     bg.setColor(
         color(
             user
-                ? com.google.android.material.R.attr.colorPrimaryContainer
-                : com.google.android.material.R.attr.colorSurfaceContainerLow));
-    t.setBackground(bg);
+                ? com.google.android.material.R.attr.colorSurfaceContainerHigh
+                : com.google.android.material.R.attr.colorSurface));
+    if (user) t.setBackground(bg);
     LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-2, -2);
     p.setMargins(user ? dp(40) : 0, dp(6), user ? 0 : dp(32), dp(6));
     row.addView(t, p);
@@ -398,6 +423,10 @@ public class MainActivity extends AppCompatActivity {
   }
 
   private void showChat() {
+    if (currentScreen.equals("Cài đặt") && connectionDraftSaver != null) {
+      draftHandler.removeCallbacks(connectionDraftSaver);
+      connectionDraftSaver.run();
+    }
     screen("Chat", 1);
     body.removeAllViews();
     ScrollView scroll = new ScrollView(this);
@@ -408,23 +437,17 @@ public class MainActivity extends AppCompatActivity {
     scroll.addView(chatList);
     body.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
     if (ledger.array("chat").length() == 0) {
-      TextView heading = text("Hôm nay, tiền của bạn\nđi đâu?", 28);
-      heading.setTypeface(null, android.graphics.Typeface.BOLD);
-      chatList.addView(heading);
-      chatList.addView(
-          text(
-              "Ghi một khoản chi, hỏi về công nợ hoặc xem báo cáo. Tôi sẽ giúp bạn sắp xếp và xác"
-                  + " nhận trước khi ghi sổ.",
-              16));
-      chatList.addView(
-          button("Thử: Ăn phở 45k tiền mặt", () -> input.setText("Ăn phở 45k tiền mặt")));
-      chatList.addView(
-          button(
-              "Xem chi tiêu tháng này",
-              () -> {
-                input.setText("Tháng này tôi tiêu bao nhiêu?");
-                send();
-              }));
+      TextView heading = text("Ghi lại hôm nay.", 30);
+      heading.setTypeface(
+          android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL));
+      LinearLayout.LayoutParams hp = new LinearLayout.LayoutParams(-1, -2);
+      hp.topMargin = dp(56);
+      chatList.addView(heading, hp);
+      TextView example = text("Ăn sáng 45k tiền mặt", 16);
+      example.setTextColor(color(com.google.android.material.R.attr.colorOnSurfaceVariant));
+      chatList.addView(example);
+      if (ledger.data.optString("apiKey").isBlank())
+        chatList.addView(button("Kết nối AI Studio", this::settings));
     }
     for (int i = 0; i < ledger.array("chat").length(); i++)
       bubble(ledger.array("chat").optJSONObject(i));
@@ -444,52 +467,68 @@ public class MainActivity extends AppCompatActivity {
                 input.setText(lastFailed);
                 send();
               }));
-    HorizontalScrollView actions = new HorizontalScrollView(this);
-    actions.setHorizontalScrollBarEnabled(false);
-    LinearLayout shortcuts = new LinearLayout(this);
-    shortcuts.setPadding(dp(16), 0, dp(16), 0);
-    for (String name : List.of("Ghi nhanh", "Nhắc hạn", "Lịch sử")) {
-      Button action =
-          button(
-              name,
-              () -> {
-                switch (name) {
-                  case "Ghi nhanh":
-                    quickEntry(null);
-                    break;
-                  case "Nhắc hạn":
-                    rules();
-                    break;
-                  default:
-                    history();
-                }
-              });
-      LinearLayout.LayoutParams ap = new LinearLayout.LayoutParams(-2, dp(48));
-      ap.rightMargin = dp(8);
-      shortcuts.addView(action, ap);
-    }
-    actions.addView(shortcuts);
-    body.addView(actions);
+    LinearLayout outer = new LinearLayout(this);
+    outer.setPadding(dp(16), dp(8), dp(16), dp(12));
     LinearLayout composer = new LinearLayout(this);
     composer.setGravity(Gravity.CENTER_VERTICAL);
-    composer.setPadding(dp(16), dp(8), dp(16), dp(12));
-    input = field("Nhắn bằng tiếng Việt…", chatDraft);
-    input.setBackgroundTintList(
-        android.content.res.ColorStateList.valueOf(
-            color(com.google.android.material.R.attr.colorPrimary)));
-    input.setMinHeight(dp(56));
+    composer.setPadding(dp(4), dp(4), dp(4), dp(4));
+    android.graphics.drawable.GradientDrawable box =
+        new android.graphics.drawable.GradientDrawable();
+    box.setCornerRadius(dp(28));
+    box.setColor(color(com.google.android.material.R.attr.colorSurfaceContainerLow));
+    composer.setBackground(box);
+    MaterialButton more =
+        iconButton(
+            "Thêm",
+            R.drawable.ic_add,
+            () -> {
+              PopupMenu menu = new PopupMenu(this, outer);
+              String[] labels = {"Ghi nhanh", "Nhắc hạn", "Lịch sử", "Xóa hội thoại"};
+              for (String label : labels) menu.getMenu().add(label);
+              menu.setOnMenuItemClickListener(
+                  item -> {
+                    switch (item.getTitle().toString()) {
+                      case "Ghi nhanh":
+                        quickEntry(null);
+                        break;
+                      case "Nhắc hạn":
+                        rules();
+                        break;
+                      case "Lịch sử":
+                        history();
+                        break;
+                      default:
+                        mutate(() -> ChatHistory.clear(ledger));
+                        lastFailed = "";
+                        showChat();
+                    }
+                    return true;
+                  });
+              menu.show();
+            });
+    composer.addView(more, new LinearLayout.LayoutParams(dp(48), dp(48)));
+    input = field("Ghi một khoản…", chatDraft);
+    input.setBackground(null);
+    input.setPadding(dp(8), dp(8), dp(8), dp(8));
+    input.setMinHeight(dp(48));
     input.setMaxLines(4);
     input.setInputType(
         InputType.TYPE_CLASS_TEXT
             | InputType.TYPE_TEXT_FLAG_MULTI_LINE
             | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
     composer.addView(input, new LinearLayout.LayoutParams(0, -2, 1));
-    Button send = button("Gửi", this::send);
+    MaterialButton send = iconButton("Gửi", R.drawable.ic_arrow_upward, this::send);
+    send.setTag("Gửi");
     send.setEnabled(!busy);
-    LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(-2, dp(52));
-    sp.leftMargin = dp(8);
-    composer.addView(send, sp);
-    body.addView(composer);
+    send.setBackgroundTintList(
+        android.content.res.ColorStateList.valueOf(
+            color(com.google.android.material.R.attr.colorPrimary)));
+    send.setIconTint(
+        android.content.res.ColorStateList.valueOf(
+            color(com.google.android.material.R.attr.colorOnPrimary)));
+    composer.addView(send, new LinearLayout.LayoutParams(dp(48), dp(48)));
+    outer.addView(composer, new LinearLayout.LayoutParams(-1, -2));
+    body.addView(outer);
     scroll.post(() -> scroll.fullScroll(View.FOCUS_DOWN));
   }
 
@@ -497,7 +536,7 @@ public class MainActivity extends AppCompatActivity {
     ledger
         .array("chat")
         .put(Ledger.obj("role", role, "text", value, "at", java.time.Instant.now().toString()));
-    while (ledger.array("chat").length() > 150) ledger.array("chat").remove(0);
+    ChatHistory.prune(ledger);
   }
 
   private void reportInbox() {
@@ -608,12 +647,12 @@ public class MainActivity extends AppCompatActivity {
                     result,
                     "reply",
                     "Chưa kết nối AI: "
-                        + OpenRouter.safe(ai.getMessage(), copy.data.optString("apiKey"))
+                        + GoogleAi.safe(ai.getMessage(), copy.data.optString("apiKey"))
                         + "\n\n"
                         + "Đã đọc lệnh bằng chế độ offline. Kiểm tra đề xuất trước khi xác nhận.");
               } catch (Exception offline) {
                 throw new IllegalArgumentException(
-                    OpenRouter.safe(ai.getMessage(), copy.data.optString("apiKey")));
+                    GoogleAi.safe(ai.getMessage(), copy.data.optString("apiKey")));
               }
             }
             JSONObject output = result;
@@ -934,6 +973,24 @@ public class MainActivity extends AppCompatActivity {
         });
   }
 
+  private void reconcileAccount(JSONObject account) {
+    LinearLayout form = form();
+    EditText amount =
+        field(account.optString("type").equals("card") ? "Dư nợ thẻ" : "Số dư thực tế", "");
+    form.addView(amount);
+    dialog(
+        "Đối soát · " + account.optString("name"),
+        form,
+        "Xác nhận",
+        () -> {
+          mutate(
+              () ->
+                  ledger.reconcile(
+                      account.optString("id"), Assistant.amount(amount.getText().toString())));
+          accounts();
+        });
+  }
+
   private void accounts() {
     screen("Nguồn tiền", 3);
     body.removeAllViews();
@@ -942,49 +999,53 @@ public class MainActivity extends AppCompatActivity {
     scroll.addView(f);
     body.addView(scroll);
     for (int i = 0; i < ledger.array("accounts").length(); i++) {
-      JSONObject a = ledger.array("accounts").optJSONObject(i);
-      String id = a.optString("id");
-      MaterialCardView accountCard = card(f, false);
-      LinearLayout accountContent = form();
-      accountCard.addView(accountContent);
-      accountContent.addView(text(a.optString("name"), 20));
-      accountContent.addView(
+      JSONObject account = ledger.array("accounts").optJSONObject(i);
+      LinearLayout row = new LinearLayout(this);
+      row.setGravity(Gravity.CENTER_VERTICAL);
+      row.setPadding(0, dp(12), 0, dp(12));
+      LinearLayout labels = new LinearLayout(this);
+      labels.setOrientation(LinearLayout.VERTICAL);
+      TextView name = text(account.optString("name"), 17);
+      name.setMaxLines(1);
+      name.setEllipsize(android.text.TextUtils.TruncateAt.END);
+      name.setTypeface(
+          android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL));
+      labels.addView(name);
+      TextView note =
           text(
-              a.optString("type").equals("card")
-                  ? "Dư nợ thẻ theo sổ"
-                  : a.has("checkpoint") ? "Số dư từ mốc đối soát" : "Biến động · chưa đối soát",
-              14));
-      TextView value = text(Ledger.money(ledger.balance(id)), 28);
-      value.setTypeface(null, android.graphics.Typeface.BOLD);
-      accountContent.addView(value);
-      if (a.optString("type").equals("card"))
-        accountContent.addView(
-            button("Sao kê theo sổ · " + a.optString("name"), () -> cardStatement(a)));
-      accountContent.addView(
-          button(
-              "Đối soát " + a.optString("name"),
+              account.optString("type").equals("card")
+                  ? "Dư nợ"
+                  : account.has("checkpoint") ? "Đã đối soát" : "Biến động",
+              12);
+      note.setTextColor(color(com.google.android.material.R.attr.colorOnSurfaceVariant));
+      labels.addView(note);
+      row.addView(labels, new LinearLayout.LayoutParams(0, -2, 1));
+      TextView amount = text(Ledger.money(ledger.balance(account.optString("id"))), 18);
+      amount.setTypeface(
+          android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL));
+      row.addView(amount);
+      MaterialButton options =
+          iconButton(
+              "Tùy chọn " + account.optString("name"),
+              R.drawable.ic_more_vert,
               () -> {
-                LinearLayout form = form();
-                EditText n =
-                    field(
-                        a.optString("type").equals("card")
-                            ? "Dư nợ thẻ hiện tại"
-                            : "Số dư thực tế hiện tại",
-                        "");
-                form.addView(n);
-                dialog(
-                    "Đối soát",
-                    form,
-                    "Xác nhận",
-                    () -> {
-                      mutate(() -> ledger.reconcile(id, Assistant.amount(n.getText().toString())));
-                      accounts();
+                PopupMenu menu = new PopupMenu(this, row);
+                menu.getMenu().add("Đối soát");
+                if (account.optString("type").equals("card")) menu.getMenu().add("Sao kê");
+                menu.setOnMenuItemClickListener(
+                    item -> {
+                      if (item.getTitle().equals("Sao kê")) cardStatement(account);
+                      else reconcileAccount(account);
+                      return true;
                     });
-              }));
+                menu.show();
+              });
+      row.addView(options, new LinearLayout.LayoutParams(dp(48), dp(48)));
+      f.addView(row);
     }
     f.addView(
         button(
-            "Thêm nguồn tiền / thẻ",
+            "Thêm nguồn tiền",
             () -> {
               LinearLayout form = form();
               EditText name = field("Tên: MB, MoMo…", ""),
@@ -1168,9 +1229,9 @@ public class MainActivity extends AppCompatActivity {
     LinearLayout f = form();
     scroll.addView(f);
     body.addView(scroll);
-    f.addView(button("Chọn kỳ báo cáo", this::reportDialog));
+    f.addView(button("Chọn kỳ", this::reportDialog));
     JSONObject totals = ledger.totals(start, end);
-    MaterialCardView summary = card(f, true);
+    MaterialCardView summary = card(f, false);
     LinearLayout content = form();
     summary.addView(content);
     content.addView(text("Chi tiêu trong kỳ", 14));
@@ -1181,19 +1242,30 @@ public class MainActivity extends AppCompatActivity {
         text(
             "Thu nhập " + Ledger.money(totals.optLong("income")) + " · " + start + " → " + end,
             14));
-    f.addView(text(ledger.report(start, end), 15));
+    f.addView(text("Theo danh mục", 18));
     JSONObject groups = ledger.totals(start, end).optJSONObject("groups");
     long max = 1;
     for (Iterator<String> it = groups.keys(); it.hasNext(); )
       max = Math.max(max, Math.abs(groups.optLong(it.next())));
     for (Iterator<String> it = groups.keys(); it.hasNext(); ) {
       String label = it.next();
-      f.addView(text(label + " · " + Ledger.money(groups.optLong(label)), 12));
+      f.addView(text(label + " · " + Ledger.money(groups.optLong(label)), 15));
       ProgressBar bar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+      bar.setProgressTintList(
+          android.content.res.ColorStateList.valueOf(
+              color(com.google.android.material.R.attr.colorPrimary)));
       bar.setMax(1000);
       bar.setProgress((int) Math.min(1000, Math.abs(groups.optLong(label)) * 1000 / max));
       f.addView(bar);
     }
+    f.addView(
+        button(
+            "Chi tiết báo cáo",
+            () -> {
+              LinearLayout details = form();
+              details.addView(text(ledger.report(start, end), 15));
+              dialog("Báo cáo", details, "Đóng", () -> {});
+            }));
     f.addView(
         button(
             "Xuất báo cáo TXT",
@@ -1301,12 +1373,13 @@ public class MainActivity extends AppCompatActivity {
     LinearLayout f = form();
     scroll.addView(f);
     body.addView(scroll);
-    EditText key = field("API key OpenRouter", ledger.data.optString("apiKey"));
+    EditText key = field("Key AI Studio", ledger.data.optString("apiKey"));
     key.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-    EditText model =
-        field("Model ID OpenRouter", ledger.data.optString("model", Assistant.DEFAULT_MODEL));
+    key.setTypeface(
+        android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.NORMAL));
+    EditText model = field("Model", ledger.data.optString("model", Assistant.DEFAULT_MODEL));
     f.addView(text("Kết nối AI", 24));
-    f.addView(text("Key được mã hóa trên máy. Thay đổi key và model được lưu tự động.", 14));
+    f.addView(text("Google AI Studio", 14));
     f.addView(key);
     f.addView(model);
     TextView status = text("", 14);
@@ -1314,7 +1387,7 @@ public class MainActivity extends AppCompatActivity {
     connectionDraftSaver =
         () -> {
           try {
-            String normalized = OpenRouter.normalizeKey(key.getText().toString());
+            String normalized = GoogleAi.normalizeKey(key.getText().toString());
             String selected = model.getText().toString().trim();
             if (selected.isEmpty()) selected = Assistant.DEFAULT_MODEL;
             String chosen = selected;
@@ -1324,10 +1397,7 @@ public class MainActivity extends AppCompatActivity {
                   Ledger.put(ledger.data, "model", chosen);
                   Ledger.put(ledger.data, "onboarded", true);
                 });
-            status.setText(
-                normalized.isEmpty()
-                    ? "Đã lưu · dùng offline"
-                    : "Đã lưu key và model · chưa kiểm tra kết nối");
+            status.setText(normalized.isEmpty() ? "Đã lưu · dùng offline" : "Đã lưu");
             key.setError(null);
           } catch (Exception e) {
             key.setError(e.getMessage());
@@ -1358,7 +1428,7 @@ public class MainActivity extends AppCompatActivity {
           if (selectedModel.isEmpty()) selectedModel = Assistant.DEFAULT_MODEL;
           String chosen = selectedModel;
           check.setEnabled(false);
-          status.setText("Đang kiểm tra key và gọi model…");
+          status.setText("Đang kết nối…");
           executor.execute(
               () -> {
                 try {
@@ -1375,7 +1445,7 @@ public class MainActivity extends AppCompatActivity {
                       () -> {
                         if (isDestroyed()) return;
                         check.setEnabled(true);
-                        status.setText(OpenRouter.safe(e.getMessage(), enteredKey));
+                        status.setText(GoogleAi.safe(e.getMessage(), enteredKey));
                         status.setTextColor(color(com.google.android.material.R.attr.colorError));
                       });
                 }
@@ -1384,12 +1454,12 @@ public class MainActivity extends AppCompatActivity {
     f.addView(check);
     f.addView(
         button(
-            "Tải danh sách model",
+            "Chọn model",
             () -> {
               executor.execute(
                   () -> {
                     try {
-                      List<String> models = Assistant.models();
+                      List<String> models = Assistant.models(key.getText().toString());
                       runOnUiThread(
                           () ->
                               new MaterialAlertDialogBuilder(this)
@@ -1410,11 +1480,20 @@ public class MainActivity extends AppCompatActivity {
                   });
             }));
     f.addView(
-        text(
-            "Gemma miễn phí có hạn mức và có thể tạm ngừng. App không tự đổi sang model tính phí.\n"
-                + "Tin nhắn và ngữ cảnh tài khoản/công nợ được gửi đến OpenRouter khi dùng AI.\n"
-                + "Dữ liệu lưu mã hóa trên thiết bị; không có tài khoản hay server riêng.",
-            14));
+        button(
+            "Quyền riêng tư & trợ giúp",
+            () ->
+                new MaterialAlertDialogBuilder(this)
+                    .setTitle("Dữ liệu của bạn")
+                    .setMessage(
+                        "Key được mã hóa trên máy. Google nhận tin nhắn gần nhất và ngữ cảnh nguồn"
+                            + " tiền/công nợ khi dùng AI. Giao dịch chỉ được ghi sau khi bạn xác"
+                            + " nhận.\n\n"
+                            + "AI Studio có quota riêng cho từng key/model. App không tự đổi model."
+                            + " Sao lưu không chứa key.")
+                    .setPositiveButton("Đóng", null)
+                    .show()));
+    f.addView(text("Tùy chọn", 18));
     EditText hour =
         field(
             "Giờ thông báo hằng ngày (0–23)",
@@ -1422,7 +1501,7 @@ public class MainActivity extends AppCompatActivity {
     f.addView(hour);
     f.addView(
         button(
-            "Bật thông báo nhắc hạn",
+            "Thông báo",
             () -> {
               if (Build.VERSION.SDK_INT >= 33
                   && checkSelfPermission("android.permission.POST_NOTIFICATIONS")
@@ -1432,7 +1511,7 @@ public class MainActivity extends AppCompatActivity {
             }));
     f.addView(
         button(
-            "Giao diện: theo hệ thống / sáng / tối",
+            "Giao diện",
             () ->
                 new MaterialAlertDialogBuilder(this)
                     .setTitle("Giao diện")
@@ -1465,7 +1544,7 @@ public class MainActivity extends AppCompatActivity {
               mutate(
                   () -> {
                     Ledger.put(
-                        ledger.data, "apiKey", OpenRouter.normalizeKey(key.getText().toString()));
+                        ledger.data, "apiKey", GoogleAi.normalizeKey(key.getText().toString()));
                     Ledger.put(
                         ledger.data,
                         "model",
@@ -1480,7 +1559,7 @@ public class MainActivity extends AppCompatActivity {
             }));
     f.addView(
         button(
-            "Danh mục tùy chỉnh",
+            "Danh mục",
             () -> {
               LinearLayout form = form();
               EditText category = field("Nhóm/Danh mục con", "");
@@ -1497,12 +1576,12 @@ public class MainActivity extends AppCompatActivity {
                     mutate(() -> ledger.array("categories").put(c));
                   });
             }));
-    f.addView(button("Báo cáo tự động gần nhất", () -> reportInbox()));
+    f.addView(button("Báo cáo tự động", () -> reportInbox()));
     f.addView(button("Sao lưu mã hóa", () -> passwordDialog(false)));
     f.addView(button("Khôi phục sao lưu", () -> passwordDialog(true)));
     f.addView(
         button(
-            "Xuất toàn bộ JSON (không gồm API key)",
+            "Xuất dữ liệu",
             () -> {
               JSONObject clean;
               try {
@@ -1527,13 +1606,6 @@ public class MainActivity extends AppCompatActivity {
                               "finance-export.json"))
                   .show();
             }));
-    f.addView(
-        text(
-            "Thông báo theo múi giờ thiết bị. Android có thể trì hoãn khi tiết kiệm pin. Cuối"
-                + " tuần/tháng/năm tạo báo cáo của kỳ đã kết thúc; đến hạn không tự ghi thanh toán."
-                + " Bản sao lưu không gồm API key. Không đồng bộ giữa thiết bị trong phiên bản"
-                + " này.",
-            13));
   }
 
   private void passwordDialog(boolean restore) {
@@ -1616,6 +1688,7 @@ public class MainActivity extends AppCompatActivity {
                   try {
                     mutate(
                         () -> {
+                          Assistant.migrateProvider(new Ledger(restored));
                           Ledger.put(restored, "apiKey", ledger.data.optString("apiKey"));
                           ledger = new Ledger(restored);
                         });
@@ -1638,7 +1711,7 @@ public class MainActivity extends AppCompatActivity {
   protected void onDestroy() {
     if (connectionDraftSaver != null) {
       draftHandler.removeCallbacks(connectionDraftSaver);
-      connectionDraftSaver.run();
+      if (currentScreen.equals("Cài đặt")) connectionDraftSaver.run();
     }
     executor.shutdown();
     super.onDestroy();

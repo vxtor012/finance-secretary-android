@@ -6,7 +6,16 @@ import java.util.regex.*;
 import org.json.*;
 
 public final class Assistant {
-  public static final String DEFAULT_MODEL = "google/gemma-4-26b-a4b-it:free";
+  public static final String DEFAULT_MODEL = "gemma-4-26b-a4b-it";
+
+  static void migrateProvider(Ledger ledger) {
+    if (!ledger.data.optString("aiProvider").equals("google")) {
+      ledger.data.remove("apiKey");
+      Ledger.put(ledger.data, "model", DEFAULT_MODEL);
+      Ledger.put(ledger.data, "aiProvider", "google");
+    }
+    ChatHistory.prune(ledger);
+  }
 
   public static long amount(String input) {
     String s =
@@ -62,14 +71,14 @@ public final class Assistant {
     JSONObject call(String path, String key, JSONObject body) throws Exception;
   }
 
-  static Transport transport = OpenRouter::request;
+  static Transport transport = GoogleAi::request;
 
   public static JSONObject propose(String text, Ledger ledger) throws Exception {
     return propose(text, ledger, transport);
   }
 
   static JSONObject propose(String text, Ledger ledger, Transport client) throws Exception {
-    String key = OpenRouter.normalizeKey(ledger.data.optString("apiKey"));
+    String key = GoogleAi.normalizeKey(ledger.data.optString("apiKey"));
     if (key.isBlank()) return offline(text);
     JSONArray accounts = new JSONArray();
     for (int i = 0; i < ledger.array("accounts").length(); i++) {
@@ -110,20 +119,18 @@ public final class Assistant {
             + context;
     JSONObject body =
         Ledger.obj(
-            "model",
-            ledger.data.optString("model", DEFAULT_MODEL),
-            "temperature",
-            0,
-            "max_tokens",
-            4096,
-            "messages",
+            "contents",
             new JSONArray()
                 .put(
                     Ledger.obj(
                         "role",
                         "user",
-                        "content",
-                        instruction + "\nTin nhắn người dùng: " + text)));
+                        "parts",
+                        new JSONArray()
+                            .put(
+                                Ledger.obj("text", instruction + "\nTin nhắn hiện tại: " + text)))),
+            "generationConfig",
+            Ledger.obj("temperature", 0, "maxOutputTokens", 4096));
     JSONArray history = new JSONArray();
     JSONArray chat = ledger.array("chat");
     for (int i = Math.max(0, chat.length() - 6); i < chat.length() - 1; i++) {
@@ -135,40 +142,67 @@ public final class Assistant {
       StringBuilder contextTurns = new StringBuilder();
       for (int i = 0; i < history.length(); i++)
         contextTurns.append(history.optJSONObject(i).optString("content")).append("\n");
-      body.optJSONArray("messages")
+      body.optJSONArray("contents")
+          .optJSONObject(0)
+          .optJSONArray("parts")
           .optJSONObject(0)
           .put(
-              "content",
+              "text",
               instruction
                   + "\nNgữ cảnh tin nhắn trước (chỉ để hiểu câu trả lời tiếp nối):\n"
                   + contextTurns
                   + "\nTin nhắn hiện tại: "
                   + text);
     }
-    String model = ledger.data.optString("model", DEFAULT_MODEL);
-    if (model.startsWith("google/gemma-"))
-      Ledger.put(body, "response_format", Ledger.obj("type", "json_object"));
-    if (model.startsWith("google/gemma-4"))
-      Ledger.put(body, "reasoning", Ledger.obj("enabled", false));
-    return parseCompletion(client.call("chat/completions", key, body));
+    String model = modelId(ledger.data.optString("model", DEFAULT_MODEL));
+    if (model.startsWith("gemma-4"))
+      body.optJSONObject("generationConfig")
+          .put("thinkingConfig", Ledger.obj("thinkingLevel", "minimal"));
+    return parseCompletion(client.call("models/" + model + ":generateContent", key, body));
+  }
+
+  static String modelId(String model) {
+    String id = model.trim().replaceFirst("^models/", "");
+    if (!id.matches("[A-Za-z0-9._-]+"))
+      throw new IllegalArgumentException("Model ID không hợp lệ.");
+    return id;
   }
 
   public static JSONObject parseCompletion(JSONObject response) throws Exception {
-    if (response.optJSONObject("error") != null)
-      return OpenRouter.decode(200, response.toString(), "");
-    JSONArray choices = response.optJSONArray("choices");
-    if (choices == null || choices.length() == 0)
+    if (response.optJSONObject("error") != null) GoogleAi.decode(200, response.toString(), "");
+    JSONArray candidates = response.optJSONArray("candidates");
+    if (candidates == null || candidates.length() == 0)
       throw new java.io.IOException(
-          "Model không trả câu trả lời. Vui lòng thử lại hoặc đổi model.");
-    JSONObject choice = choices.getJSONObject(0), message = choice.optJSONObject("message");
+          "Google chưa trả câu trả lời"
+              + (response.optJSONObject("promptFeedback") == null
+                  ? ". Thử lại hoặc đổi model."
+                  : ": "
+                      + response
+                          .optJSONObject("promptFeedback")
+                          .optString("blockReason", "nội dung bị chặn")));
+    JSONObject choice = candidates.getJSONObject(0);
+    String reason = choice.optString("finishReason");
+    if (!reason.isEmpty() && !reason.equals("STOP"))
+      throw new java.io.IOException(
+          reason.equals("MAX_TOKENS")
+              ? "Phản hồi bị cắt do giới hạn token. Chưa ghi tiền; hãy chia nhỏ tin nhắn."
+              : "Google không hoàn tất câu trả lời: " + reason + ". Chưa ghi tiền.");
+    JSONObject message = choice.optJSONObject("content");
     if (message == null) throw new java.io.IOException("Model trả phản hồi thiếu nội dung.");
-    String content = message.optString("content", "").trim();
+    StringBuilder answer = new StringBuilder();
+    JSONArray parts = message.optJSONArray("parts");
+    if (parts != null)
+      for (int i = 0; i < parts.length(); i++) {
+        JSONObject part = parts.optJSONObject(i);
+        if (part != null && !part.optBoolean("thought")) answer.append(part.optString("text"));
+      }
+    String content = answer.toString().trim();
     if (content.isEmpty() || content.equals("null"))
       throw new java.io.IOException(
-          choice.optString("finish_reason").equals("length")
+          reason.equals("MAX_TOKENS")
               ? "Model đã dùng hết giới hạn token trước khi trả lời. Thử lại hoặc chọn model khác."
               : "Model trả nội dung rỗng. Thử lại hoặc đổi model.");
-    if (choice.optString("finish_reason").equals("length"))
+    if (reason.equals("MAX_TOKENS"))
       throw new java.io.IOException(
           "Phản hồi bị cắt do giới hạn token. Hãy chia tin nhắn thành ít giao dịch hơn.");
     if (content.startsWith("```"))
@@ -200,39 +234,66 @@ public final class Assistant {
   }
 
   public static String checkConnection(String key, String model) throws Exception {
-    key = OpenRouter.normalizeKey(key);
-    if (key.isEmpty()) throw new IllegalArgumentException("Hãy nhập API key trước.");
-    transport.call("key", key, null);
+    key = GoogleAi.normalizeKey(key);
+    if (key.isEmpty()) throw new IllegalArgumentException("Hãy nhập key AI Studio.");
+    String id = modelId(model);
+    JSONObject config = Ledger.obj("maxOutputTokens", 512);
+    if (id.startsWith("gemma-4"))
+      config.put("thinkingConfig", Ledger.obj("thinkingLevel", "minimal"));
     JSONObject body =
         Ledger.obj(
-            "model",
-            model,
-            "max_tokens",
-            512,
-            "messages",
+            "contents",
             new JSONArray()
-                .put(Ledger.obj("role", "user", "content", "Chỉ trả lời: Kết nối thành công.")));
-    if (model.startsWith("google/gemma-4"))
-      Ledger.put(body, "reasoning", Ledger.obj("enabled", false));
-    parseCompletion(transport.call("chat/completions", key, body));
-    return "Kết nối thành công với " + model + ". Key và model đã trả lời được.";
+                .put(
+                    Ledger.obj(
+                        "parts",
+                        new JSONArray()
+                            .put(Ledger.obj("text", "Chỉ trả lời: Kết nối thành công.")))),
+            "generationConfig",
+            config);
+    parseCompletion(transport.call("models/" + id + ":generateContent", key, body));
+    return "Đã kết nối · " + id;
   }
 
-  public static List<String> models() throws Exception {
-    JSONArray items = transport.call("models", "", null).getJSONArray("data");
+  public static List<String> models(String key) throws Exception {
+    key = GoogleAi.normalizeKey(key);
+    if (key.isEmpty()) throw new IllegalArgumentException("Nhập key AI Studio để tải model.");
     List<String> result = new ArrayList<>();
-
-    for (int i = 0; i < items.length(); i++) {
-      String id = items.getJSONObject(i).getString("id");
-      if (!result.contains(id)) result.add(id);
+    String token = "";
+    for (int page = 0; page < 20; page++) {
+      JSONObject response =
+          transport.call(
+              "models?pageSize=1000"
+                  + (token.isEmpty()
+                      ? ""
+                      : "&pageToken=" + java.net.URLEncoder.encode(token, "UTF-8")),
+              key,
+              null);
+      JSONArray items = response.optJSONArray("models");
+      if (items != null)
+        for (int i = 0; i < items.length(); i++) {
+          JSONObject m = items.getJSONObject(i);
+          JSONArray methods = m.optJSONArray("supportedGenerationMethods");
+          boolean supported = false;
+          if (methods != null)
+            for (int j = 0; j < methods.length(); j++)
+              if (methods.optString(j).equals("generateContent")) supported = true;
+          String id = m.optString("name").replaceFirst("^models/", "");
+          if (supported
+              && (id.startsWith("gemma-") || id.startsWith("gemini-"))
+              && !id.matches(".*(image|audio|tts|live|robotics).*"))
+            if (!result.contains(id)) result.add(id);
+        }
+      token = response.optString("nextPageToken");
+      if (token.isEmpty()) break;
     }
-    result.sort((a, b) -> Integer.compare(modelRank(a), modelRank(b)));
+    result.sort(
+        (a, b) ->
+            Integer.compare(
+                a.equals(DEFAULT_MODEL) ? 0 : a.startsWith("gemma-") ? 1 : 2,
+                b.equals(DEFAULT_MODEL) ? 0 : b.startsWith("gemma-") ? 1 : 2));
+    if (result.isEmpty())
+      throw new java.io.IOException("Không có model chat khả dụng với key này.");
     return result;
-  }
-
-  private static int modelRank(String id) {
-    return id.equals(DEFAULT_MODEL)
-        ? 0
-        : id.contains("gemma") && id.endsWith(":free") ? 1 : id.endsWith(":free") ? 2 : 3;
   }
 }

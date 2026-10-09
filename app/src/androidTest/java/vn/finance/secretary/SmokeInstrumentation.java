@@ -28,6 +28,7 @@ public class SmokeInstrumentation extends Instrumentation {
       SecureStore store = new SecureStore(getTargetContext());
       Ledger ledger = new Ledger();
       Ledger.put(ledger.data, "onboarded", true);
+      Ledger.put(ledger.data, "aiProvider", "google");
       Ledger.put(ledger.data, "apiKey", "test-key-never-export");
       store.save(ledger.data);
       check(store.load().optString("apiKey").equals("test-key-never-export"), "Keystore roundtrip");
@@ -96,44 +97,46 @@ public class SmokeInstrumentation extends Instrumentation {
                 findButton(relaunched.getWindow().getDecorView(), "Gửi") != null, "Relaunch works");
             findNavigation(relaunched.getWindow().getDecorView()).setSelectedItemId(3);
             check(
-                findButton(relaunched.getWindow().getDecorView(), "Thêm nguồn tiền / thẻ") != null,
+                findButton(relaunched.getWindow().getDecorView(), "Thêm nguồn tiền") != null,
                 "Account screen renders");
             findNavigation(relaunched.getWindow().getDecorView()).setSelectedItemId(4);
             check(
                 findButton(relaunched.getWindow().getDecorView(), "Sao lưu mã hóa") != null,
                 "Settings renders");
-            EditText key = findLabeled(relaunched.getWindow().getDecorView(), "API key OpenRouter"),
-                model = findLabeled(relaunched.getWindow().getDecorView(), "Model ID OpenRouter");
+            EditText key = findLabeled(relaunched.getWindow().getDecorView(), "Key AI Studio"),
+                model = findLabeled(relaunched.getWindow().getDecorView(), "Model");
             check(key != null && model != null, "Labeled AI fields");
-            key.setText("Bearer sk-or-v1-instrumentation-fixture");
-            model.setText("google/gemma-4-31b-it:free");
+            key.setText("Bearer AIza-instrumentation-fixture");
+            model.setText("gemma-4-31b-it");
             findNavigation(relaunched.getWindow().getDecorView()).setSelectedItemId(1);
           });
       JSONObject preferences = store.load();
       check(
-          preferences.optString("model").equals("google/gemma-4-31b-it:free"),
+          preferences.optString("model").equals("gemma-4-31b-it"),
           "Model auto-saved before leaving settings");
       check(
-          preferences.optString("apiKey").equals("sk-or-v1-instrumentation-fixture"),
+          preferences.optString("apiKey").equals("AIza-instrumentation-fixture"),
           "Pasted key normalized and auto-saved");
       Assistant.transport =
           (path, key, body) -> {
-            check(key.equals("sk-or-v1-instrumentation-fixture"), "Persisted key used");
-            check(
-                body.optString("model").equals("google/gemma-4-31b-it:free"),
-                "Selected model used");
+            check(key.equals("AIza-instrumentation-fixture"), "Persisted key used");
+            check(path.equals("models/gemma-4-31b-it:generateContent"), "Selected model used");
             return Ledger.obj(
-                "choices",
+                "candidates",
                 new JSONArray()
                     .put(
                         Ledger.obj(
-                            "finish_reason",
-                            "stop",
-                            "message",
+                            "finishReason",
+                            "STOP",
+                            "content",
                             Ledger.obj(
-                                "content",
-                                "{\"reply\":\"Chào bạn, tôi sẵn sàng giúp ghi"
-                                    + " sổ.\",\"actions\":[]}"))));
+                                "parts",
+                                new JSONArray()
+                                    .put(
+                                        Ledger.obj(
+                                            "text",
+                                            "{\"reply\":\"Chào bạn, tôi sẵn sàng giúp ghi"
+                                                + " sổ.\",\"actions\":[]}"))))));
           };
       runOnMainSync(
           () -> {
@@ -149,7 +152,7 @@ public class SmokeInstrumentation extends Instrumentation {
           "AI conversation displayed");
       Assistant.transport =
           (path, key, body) ->
-              OpenRouter.decode(
+              GoogleAi.decode(
                   403,
                   "{\"error\":{\"code\":403,\"message\":\"Privacy routing restriction\"}}",
                   key);
@@ -170,12 +173,57 @@ public class SmokeInstrumentation extends Instrumentation {
           "Generic failure removed");
       check(store.load().optJSONArray("events").length() == 1, "API failure never changes ledger");
       runOnMainSync(relaunched::finish);
-      Assistant.transport = OpenRouter::request;
+      waitForIdleSync();
+      check(
+          store.load().optJSONArray("chat").length() <= ChatHistory.LIMIT,
+          "Bounded chat persisted");
+      JSONObject oldState = store.load();
+      String eventsBefore = oldState.optJSONArray("events").toString();
+      oldState.remove("aiProvider");
+      Ledger.put(oldState, "apiKey", "sk-or-old-fixture");
+      Ledger.put(oldState, "model", "google/gemma-4-31b-it:free");
+      Ledger.put(
+          oldState,
+          "pending",
+          Ledger.obj(
+              "requestId",
+              "upgrade-proposal",
+              "actions",
+              new JSONArray()
+                  .put(
+                      Ledger.obj(
+                          "type",
+                          "income",
+                          "amount",
+                          20000,
+                          "account",
+                          "cash",
+                          "date",
+                          Ledger.today()))));
+      for (int i = 0; i < 12; i++)
+        oldState.optJSONArray("chat").put(Ledger.obj("role", "user", "text", "old " + i));
+      store.save(oldState);
+      Activity upgraded = startActivitySync(intent);
+      waitForIdleSync();
+      JSONObject migrated = store.load();
+      check(
+          migrated.optString("aiProvider").equals("google") && !migrated.has("apiKey"),
+          "Old provider key retired");
+      check(
+          migrated.optJSONArray("events").toString().equals(eventsBefore),
+          "Upgrade retains ledger");
+      check(
+          migrated.optJSONObject("pending").optString("requestId").equals("upgrade-proposal"),
+          "Upgrade retains proposal");
+      check(migrated.optJSONArray("chat").length() == 5, "Upgrade trims only chat");
+      runOnMainSync(upgraded::finish);
+      Assistant.transport = GoogleAi::request;
       result.putString(
           "stream",
           "PASS: startup, chat proposal, confirmation boundary, encrypted persistence, backup,"
               + " wrong password, tamper rejection, navigation, relaunch, pasted key, saved model,"
-              + " AI success, original API error");
+              + " AI success, original API error, provider migration, bounded chat, retained ledger"
+              + " and proposal");
       finish(Activity.RESULT_OK, result);
     } catch (Throwable failure) {
       java.io.StringWriter trace = new java.io.StringWriter();
@@ -186,7 +234,11 @@ public class SmokeInstrumentation extends Instrumentation {
   }
 
   private Button findButton(View v, String label) {
-    if (v instanceof Button && ((Button) v).getText().toString().equals(label)) return (Button) v;
+    if (v instanceof Button
+        && (((Button) v).getText().toString().equals(label)
+            || label.contentEquals(
+                v.getContentDescription() == null ? "" : v.getContentDescription())))
+      return (Button) v;
     if (v instanceof ViewGroup) {
       ViewGroup group = (ViewGroup) v;
       for (int i = 0; i < group.getChildCount(); i++) {

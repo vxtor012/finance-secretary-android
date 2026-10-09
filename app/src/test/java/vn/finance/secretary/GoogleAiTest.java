@@ -5,27 +5,32 @@ import static org.junit.Assert.*;
 import org.json.*;
 import org.junit.Test;
 
-public class OpenRouterTest {
+public class GoogleAiTest {
   private JSONObject completion(String text, String reason) {
     return Ledger.obj(
-        "choices",
+        "candidates",
         new JSONArray()
-            .put(Ledger.obj("finish_reason", reason, "message", Ledger.obj("content", text))));
+            .put(
+                Ledger.obj(
+                    "finishReason",
+                    reason.equals("length") ? "MAX_TOKENS" : "STOP",
+                    "content",
+                    Ledger.obj("parts", new JSONArray().put(Ledger.obj("text", text))))));
   }
 
   @Test
   public void errorStatusRetainsReasonButRedactsSecret() throws Exception {
     for (int code : new int[] {401, 402, 403, 404, 429, 503}) {
       try {
-        OpenRouter.decode(
+        GoogleAi.decode(
             code,
             Ledger.obj(
                     "error",
-                    Ledger.obj("code", code, "message", "Provider rejected sk-or-v1-secret-value"))
+                    Ledger.obj("code", code, "message", "Provider rejected AIzasecret-value"))
                 .toString(),
-            "sk-or-v1-secret-value");
+            "AIzasecret-value");
         fail();
-      } catch (OpenRouter.ApiException e) {
+      } catch (GoogleAi.ApiException e) {
         assertEquals(code, e.status);
         assertTrue(e.getMessage().contains("HTTP " + code));
         assertFalse(e.getMessage().contains("secret-value"));
@@ -36,9 +41,9 @@ public class OpenRouterTest {
   @Test
   public void errorInsideHttp200IsNotParsedAsAnswer() throws Exception {
     try {
-      OpenRouter.decode(200, "{\"error\":{\"code\":429,\"message\":\"Rate limited\"}}", "");
+      GoogleAi.decode(200, "{\"error\":{\"code\":429,\"message\":\"Rate limited\"}}", "");
       fail();
-    } catch (OpenRouter.ApiException e) {
+    } catch (GoogleAi.ApiException e) {
       assertEquals(429, e.status);
     }
   }
@@ -82,10 +87,9 @@ public class OpenRouterTest {
 
   @Test
   public void pastingBearerAndInvisibleCharactersIsNormalized() {
-    assertEquals(
-        "sk-or-v1-example", OpenRouter.normalizeKey(" \uFEFFBearer sk-or-v1-example\u200B \n"));
+    assertEquals("AIzaexample", GoogleAi.normalizeKey(" \uFEFFBearer AIzaexample\u200B \n"));
     try {
-      OpenRouter.normalizeKey("sk-or-v1-ab cd");
+      GoogleAi.normalizeKey("AIzaab cd");
       fail();
     } catch (IllegalArgumentException expected) {
     }
@@ -94,19 +98,23 @@ public class OpenRouterTest {
   @Test
   public void selectedModelAndKeyActuallyReachTransport() throws Exception {
     Ledger l = new Ledger();
-    Ledger.put(l.data, "apiKey", "Bearer sk-or-v1-example");
-    Ledger.put(l.data, "model", "google/gemma-4-31b-it:free");
+    Ledger.put(l.data, "apiKey", "Bearer AIzaexample");
+    Ledger.put(l.data, "model", "gemma-4-31b-it");
     String before = l.data.toString();
     JSONObject out =
         Assistant.propose(
             "Ăn sáng 45k tiền mặt",
             l,
             (path, key, body) -> {
-              assertEquals("chat/completions", path);
-              assertEquals("sk-or-v1-example", key);
-              assertEquals("google/gemma-4-31b-it:free", body.optString("model"));
-              assertEquals("json_object", body.optJSONObject("response_format").optString("type"));
-              assertFalse(body.optJSONObject("reasoning").optBoolean("enabled", true));
+              assertEquals("models/gemma-4-31b-it:generateContent", path);
+              assertEquals("AIzaexample", key);
+              assertTrue(body.has("contents"));
+              assertEquals(4096, body.optJSONObject("generationConfig").optInt("maxOutputTokens"));
+              assertEquals(
+                  "minimal",
+                  body.optJSONObject("generationConfig")
+                      .optJSONObject("thinkingConfig")
+                      .optString("thinkingLevel"));
               return completion(
                   "{\"reply\":\"Đề"
                       + " xuất\",\"actions\":[{\"type\":\"expense\",\"amount\":45000,\"account\":\"Tiền"
@@ -120,18 +128,18 @@ public class OpenRouterTest {
   @Test
   public void providerFailureIsNeverChangedIntoOfflineHelp() throws Exception {
     Ledger l = new Ledger();
-    Ledger.put(l.data, "apiKey", "sk-or-v1-example");
+    Ledger.put(l.data, "apiKey", "AIzaexample");
     try {
       Assistant.propose(
           "xin chào",
           l,
           (path, key, body) ->
-              OpenRouter.decode(
+              GoogleAi.decode(
                   403,
                   "{\"error\":{\"code\":403,\"message\":\"Privacy routing restriction\"}}",
                   key));
       fail();
-    } catch (OpenRouter.ApiException e) {
+    } catch (GoogleAi.ApiException e) {
       assertTrue(e.getMessage().contains("Privacy routing restriction"));
       assertFalse(e.getMessage().contains("Offline:"));
     }
