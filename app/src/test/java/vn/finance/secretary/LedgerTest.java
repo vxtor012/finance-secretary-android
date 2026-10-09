@@ -8,6 +8,79 @@ import org.junit.Test;
 
 public class LedgerTest {
   @Test
+  public void standardCategoriesReplaceEditableListButKeepHistoricalLabels() throws Exception {
+    Ledger l = ledger();
+    commit(l, action("expense", 1000, "MB"));
+    JSONObject event = l.array("events").optJSONObject(0);
+    Ledger.put(event, "category", "Danh mục cũ/Tùy chỉnh");
+    l.array("categories").put("Danh mục cũ/Tùy chỉnh");
+    Ledger restored = new Ledger(new JSONObject(l.data.toString()));
+    assertEquals(Ledger.STANDARD_CATEGORIES.size(), restored.array("categories").length());
+    assertEquals(
+        "Danh mục cũ/Tùy chỉnh", restored.array("events").optJSONObject(0).optString("category"));
+    assertEquals(1000, expense(restored));
+    JSONObject invalid = action("expense", 1000, "MB");
+    Ledger.put(invalid, "category", "Tự tạo/Mới");
+    String before = restored.array("events").toString();
+    try {
+      commit(restored, invalid);
+      fail();
+    } catch (IllegalArgumentException expected) {
+    }
+    assertEquals(before, restored.array("events").toString());
+  }
+
+  @Test
+  public void removeUnusedAndArchiveUsedAccountsPreservesReports() {
+    Ledger l = ledger();
+    String wallet = l.account("MoMo").optString("id");
+    l.removeAccount(wallet);
+    try {
+      l.account(wallet);
+      fail();
+    } catch (IllegalArgumentException expected) {
+    }
+    commit(l, action("expense", 50000, "MB"));
+    String events = l.array("events").toString();
+    String mb = l.account("MB").optString("id");
+    l.removeAccount(mb);
+    assertTrue(l.account(mb).optBoolean("archived"));
+    assertEquals(events, l.array("events").toString());
+    assertEquals(50000, expense(l));
+    assertEquals(-50000, l.balance(mb));
+    try {
+      commit(l, action("expense", 1000, "MB"));
+      fail();
+    } catch (IllegalArgumentException expected) {
+    }
+    Ledger.put(l.account(mb), "archived", false);
+    commit(l, action("income", 1000, "MB"));
+    assertEquals(-49000, l.balance(mb));
+  }
+
+  @Test
+  public void cannotRemoveLastSourceOrSourceOfPendingProposal() {
+    Ledger l = new Ledger();
+    try {
+      l.removeAccount(l.account("cash").optString("id"));
+      fail();
+    } catch (IllegalArgumentException expected) {
+    }
+    l.addAccount("MB", "bank", "bank");
+    Ledger.put(
+        l.data,
+        "pending",
+        Ledger.obj("actions", new JSONArray().put(action("income", 1000, "bank"))));
+    String before = l.data.toString();
+    try {
+      l.removeAccount(l.account("MB").optString("id"));
+      fail();
+    } catch (IllegalStateException expected) {
+    }
+    assertEquals(before, l.data.toString());
+  }
+
+  @Test
   public void fractionalFeeIsRejectedWithoutAnyPosting() {
     Ledger l = ledger();
     JSONObject a = action("transfer", 100000, "MB");

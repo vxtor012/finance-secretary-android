@@ -83,6 +83,7 @@ public final class Assistant {
     JSONArray accounts = new JSONArray();
     for (int i = 0; i < ledger.array("accounts").length(); i++) {
       JSONObject a = ledger.array("accounts").optJSONObject(i);
+      if (a.optBoolean("archived")) continue;
       accounts.put(
           Ledger.obj(
               "id",
@@ -113,9 +114,10 @@ public final class Assistant {
             + " expense,income,transfer,lend,borrow,collect,repay,card_purchase,card_payment,card_refund;"
             + " amount số nguyên VND; account tên/id tài khoản; to cho chuyển/trả thẻ; fee; person"
             + " cho vay; debtId mã khoản gốc cho collect/repay; date YYYY-MM-DD; due tùy chọn;"
-            + " category hai cấp; note. 1tr5=1500000, 50k=50000. Thu hồi/đi vay/trả nợ/chuyển tiền"
-            + " không phải thu chi. Không thực hiện thao tác xóa/sửa, không tạo tài khoản tự động."
-            + " Nếu người dùng hỏi báo cáo, hướng dẫn nút Báo cáo; không bịa số liệu. Context: "
+            + " category chỉ được chọn từ categories trong Context; không tạo danh mục mới; note."
+            + " 1tr5=1500000, 50k=50000. Thu hồi/đi vay/trả nợ/chuyển tiền không phải thu chi."
+            + " Không thực hiện thao tác xóa/sửa, không tạo tài khoản tự động. Nếu người dùng hỏi"
+            + " báo cáo, hướng dẫn nút Báo cáo; không bịa số liệu. Context: "
             + context;
     JSONObject body =
         Ledger.obj(

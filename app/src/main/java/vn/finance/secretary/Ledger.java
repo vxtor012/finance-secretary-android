@@ -6,6 +6,48 @@ import org.json.*;
 
 /** Integer VND, event replay, atomic batches. AI never supplies balances. */
 public final class Ledger {
+  public static final List<String> STANDARD_CATEGORIES =
+      List.of(
+          "Ăn uống/Ăn ngoài",
+          "Ăn uống/Đi chợ",
+          "Ăn uống/Đồ uống",
+          "Nhà ở/Thuê nhà",
+          "Nhà ở/Sửa chữa",
+          "Nhà ở/Đồ gia dụng",
+          "Sinh hoạt/Điện nước",
+          "Sinh hoạt/Internet và điện thoại",
+          "Sinh hoạt/Đồ dùng",
+          "Sinh hoạt/Khác",
+          "Di chuyển/Xăng",
+          "Di chuyển/Vé xe và gọi xe",
+          "Di chuyển/Bảo dưỡng và gửi xe",
+          "Sức khỏe/Khám chữa bệnh",
+          "Sức khỏe/Thuốc",
+          "Sức khỏe/Thể thao",
+          "Mua sắm/Quần áo",
+          "Mua sắm/Điện tử",
+          "Mua sắm/Chăm sóc cá nhân",
+          "Mua sắm/Đồ dùng",
+          "Giải trí/Dịch vụ",
+          "Giải trí/Du lịch",
+          "Subscription/Đăng ký",
+          "Học tập/Học phí",
+          "Học tập/Sách và khóa học",
+          "Công việc/Công cụ và vật tư",
+          "Gia đình/Con cái",
+          "Gia đình/Hỗ trợ",
+          "Quà tặng/Quà và hiếu hỉ",
+          "Quà tặng/Từ thiện",
+          "Phí tài chính/Phí",
+          "Phí tài chính/Lãi vay",
+          "Phí tài chính/Thuế",
+          "Phí tài chính/Bảo hiểm",
+          "Thu nhập/Lương",
+          "Thu nhập/Thưởng",
+          "Thu nhập/Làm thêm và kinh doanh",
+          "Thu nhập/Lãi và cổ tức",
+          "Thu nhập/Quà tặng",
+          "Thu nhập/Khác");
   public JSONObject data;
 
   public Ledger() {
@@ -19,21 +61,7 @@ public final class Ledger {
             "accounts", "events", "rules", "audit", "chat", "reports", "categories", "statements"))
       if (!data.has(k)) put(data, k, new JSONArray());
     if (array("accounts").length() == 0) addAccount("Tiền mặt", "cash", "tiền mặt,cash");
-    if (array("categories").length() == 0)
-      for (String c :
-          List.of(
-              "Ăn uống/Ăn ngoài",
-              "Nhà ở/Thuê nhà",
-              "Di chuyển/Xăng",
-              "Sinh hoạt/Điện nước",
-              "Sức khỏe/Thuốc",
-              "Mua sắm/Đồ dùng",
-              "Giải trí/Dịch vụ",
-              "Subscription/Đăng ký",
-              "Học tập/Công việc",
-              "Gia đình/Hỗ trợ",
-              "Phí tài chính/Phí",
-              "Thu nhập/Lương")) array("categories").put(c);
+    put(data, "categories", new JSONArray(STANDARD_CATEGORIES));
   }
 
   public static void put(JSONObject o, String k, Object v) {
@@ -106,6 +134,57 @@ public final class Ledger {
                 type,
                 "aliases",
                 aliases));
+  }
+
+  public boolean accountHasHistory(String id) {
+    JSONObject a = account(id);
+    if (a.has("checkpoint")) return true;
+    for (int i = 0; i < array("events").length(); i++) {
+      JSONObject e = array("events").optJSONObject(i);
+      if (e.optString("account").equals(id)
+          || e.optString("to").equals(id)
+          || e.optJSONObject("effects").has(id)) return true;
+    }
+    for (int i = 0; i < array("statements").length(); i++)
+      if (array("statements").optJSONObject(i).toString().contains(id)) return true;
+    return false;
+  }
+
+  public void removeAccount(String id) {
+    JSONObject a = account(id);
+    int active = 0;
+    for (int i = 0; i < array("accounts").length(); i++)
+      if (!array("accounts").optJSONObject(i).optBoolean("archived")) active++;
+    if (!a.optBoolean("archived") && active <= 1)
+      throw new IllegalArgumentException(
+          "Cần giữ ít nhất một nguồn tiền để ghi giao dịch. Hãy thêm nguồn khác trước.");
+    JSONObject pending = data.optJSONObject("pending");
+    if (pending != null) {
+      JSONArray actions = pending.optJSONArray("actions");
+      if (actions != null)
+        for (int i = 0; i < actions.length(); i++) {
+          JSONObject action = actions.optJSONObject(i);
+          for (String key : List.of("account", "to")) {
+            String value = action.optString(key);
+            if (value.isBlank()) continue;
+            try {
+              if (account(value).optString("id").equals(id))
+                throw new IllegalStateException(
+                    "Nguồn đang có đề xuất chờ xác nhận. Hãy xử lý đề xuất trước.");
+            } catch (IllegalArgumentException ignored) {
+            }
+          }
+        }
+    }
+    if (accountHasHistory(id)) put(a, "archived", true);
+    else
+      for (int i = 0; i < array("accounts").length(); i++)
+        if (array("accounts").optJSONObject(i).optString("id").equals(id)) {
+          array("accounts").remove(i);
+          break;
+        }
+    array("audit")
+        .put(obj("action", "remove_account", "id", id, "at", java.time.Instant.now().toString()));
   }
 
   public long balance(String id) {
@@ -279,6 +358,9 @@ public final class Ledger {
     }
     if (fee < 0 || fee > 1_000_000_000L) throw new IllegalArgumentException("Phí không hợp lệ");
     JSONObject a = account(source.optString("account"));
+    if (a.optBoolean("archived"))
+      throw new IllegalArgumentException(
+          "Nguồn tiền đã ngừng sử dụng. Khôi phục nguồn trước khi ghi.");
     String aid = a.optString("id"), id = UUID.randomUUID().toString();
     JSONObject effects = new JSONObject();
     long income = 0, expense = 0;
@@ -300,6 +382,8 @@ public final class Ledger {
       case "card_payment":
         {
           JSONObject b = account(source.optString("to"));
+          if (b.optBoolean("archived"))
+            throw new IllegalArgumentException("Nguồn đích đã ngừng sử dụng.");
           String bid = b.optString("id");
           if (aid.equals(bid) || a.optString("type").equals("card"))
             throw new IllegalArgumentException("Nguồn chuyển không hợp lệ");
@@ -353,6 +437,8 @@ public final class Ledger {
       category = source.optString("feeCategory", "Phí tài chính/Phí");
     if (!category.contains("/") || category.startsWith("/") || category.endsWith("/"))
       throw new IllegalArgumentException("Danh mục cần dạng Nhóm/Danh mục con");
+    if (!STANDARD_CATEGORIES.contains(category))
+      throw new IllegalArgumentException("Chọn danh mục có sẵn trong bộ danh mục của app.");
     JSONObject e =
         obj(
             "id",

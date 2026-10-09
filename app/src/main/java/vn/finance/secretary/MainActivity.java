@@ -27,7 +27,7 @@ import org.json.*;
 public class MainActivity extends AppCompatActivity {
   private Ledger ledger;
   private SecureStore store;
-  private LinearLayout root, body, chatList;
+  private LinearLayout root, body, chatList, bookTabs;
   private EditText input;
   private final Handler draftHandler = new Handler(Looper.getMainLooper());
   private Runnable connectionDraftSaver;
@@ -36,7 +36,7 @@ public class MainActivity extends AppCompatActivity {
   private OnBackPressedCallback back;
   private String currentScreen = "Chat", lastFailed = "", chatDraft = "";
   private final ExecutorService executor = Executors.newSingleThreadExecutor();
-  private boolean busy = false;
+  private boolean busy = false, settingsDetail = false;
   private String backupPassword = "";
   private byte[] exportBytes;
 
@@ -51,11 +51,6 @@ public class MainActivity extends AppCompatActivity {
                 : AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM);
 
     super.onCreate(b);
-    if (!BuildConfig.DEBUG)
-      getWindow()
-          .setFlags(
-              android.view.WindowManager.LayoutParams.FLAG_SECURE,
-              android.view.WindowManager.LayoutParams.FLAG_SECURE);
     KeyguardManager gate = (KeyguardManager) getSystemService(KEYGUARD_SERVICE);
     if (gate.isDeviceSecure()) {
       startActivityForResult(
@@ -111,6 +106,10 @@ public class MainActivity extends AppCompatActivity {
     toolbar.setTitle("Thư ký tài chính");
     toolbar.setSubtitle("Trò chuyện để hiểu tiền của bạn");
     root.addView(toolbar, new LinearLayout.LayoutParams(-1, -2));
+    bookTabs = new LinearLayout(this);
+    bookTabs.setPadding(dp(8), 0, dp(8), dp(8));
+    bookTabs.setVisibility(View.GONE);
+    root.addView(bookTabs, new LinearLayout.LayoutParams(-1, -2));
     body = new LinearLayout(this);
     body.setOrientation(LinearLayout.VERTICAL);
     LinearLayout.LayoutParams bodySize =
@@ -122,7 +121,7 @@ public class MainActivity extends AppCompatActivity {
     navigation.setBackgroundColor(color(com.google.android.material.R.attr.colorSurface));
     navigation.setLabelVisibilityMode(
         com.google.android.material.navigation.NavigationBarView.LABEL_VISIBILITY_LABELED);
-    String[] labels = {"Chat", "Báo cáo", "Nguồn tiền", "Cài đặt"};
+    String[] labels = {"Chat", "Báo cáo", "Sổ", "Cài đặt"};
     int[] outline = {
       R.drawable.ic_chat_outline,
       R.drawable.ic_bar_chart_outline,
@@ -135,12 +134,14 @@ public class MainActivity extends AppCompatActivity {
       R.drawable.ic_account_balance_wallet_filled,
       R.drawable.ic_settings_filled
     };
-    for (int i = 0; i < 4; i++) {
+    int[] order = {0, 2, 1, 3};
+    for (int position = 0; position < 4; position++) {
+      int i = order[position];
       android.graphics.drawable.StateListDrawable icon =
           new android.graphics.drawable.StateListDrawable();
       icon.addState(new int[] {android.R.attr.state_checked}, getDrawable(filled[i]));
       icon.addState(new int[] {}, getDrawable(outline[i]));
-      navigation.getMenu().add(0, i + 1, i, labels[i]).setIcon(icon);
+      navigation.getMenu().add(0, i + 1, position, labels[i]).setIcon(icon);
     }
     root.addView(navigation, new LinearLayout.LayoutParams(-1, -2));
     navigation.setOnItemSelectedListener(
@@ -178,6 +179,10 @@ public class MainActivity extends AppCompatActivity {
     back =
         new OnBackPressedCallback(false) {
           public void handleOnBackPressed() {
+            if (settingsDetail) {
+              settings();
+              return;
+            }
             showChat();
           }
         };
@@ -187,13 +192,41 @@ public class MainActivity extends AppCompatActivity {
 
   private void screen(String name, int destination) {
     currentScreen = name;
+    settingsDetail = false;
     if (toolbar != null) {
-      toolbar.setTitle(name.equals("Chat") ? "Sổ của bạn" : name);
+      toolbar.setTitle(destination == 3 ? "Sổ" : name.equals("Chat") ? "Sổ của bạn" : name);
       toolbar.setSubtitle(null);
+      toolbar.setNavigationIcon(null);
       navigation.getMenu().findItem(destination).setChecked(true);
     }
+    bookNavigation(destination == 3, name);
     if (back != null) back.setEnabled(!name.equals("Chat"));
     input = null;
+  }
+
+  private void bookNavigation(boolean visible, String current) {
+    if (bookTabs == null) return;
+    bookTabs.setVisibility(visible ? View.VISIBLE : View.GONE);
+    if (!visible) return;
+    bookTabs.removeAllViews();
+    String[] labels = {"Nguồn tiền", "Giao dịch", "Nhắc hạn"};
+    Runnable[] actions = {this::accounts, this::history, this::rules};
+    for (int i = 0; i < labels.length; i++) {
+      MaterialButton tab = (MaterialButton) button(labels[i], actions[i]);
+      tab.setTextSize(13);
+      tab.setGravity(Gravity.CENTER);
+      tab.setPadding(dp(4), 0, dp(4), 0);
+      boolean selected = current.equals(labels[i]);
+      tab.setSelected(selected);
+      tab.setContentDescription(labels[i] + (selected ? ", đang chọn" : ""));
+      if (selected)
+        tab.setBackgroundTintList(
+            android.content.res.ColorStateList.valueOf(
+                color(com.google.android.material.R.attr.colorPrimaryContainer)));
+      LinearLayout.LayoutParams size = new LinearLayout.LayoutParams(0, -2, 1);
+      size.setMargins(dp(2), 0, dp(2), 0);
+      bookTabs.addView(tab, size);
+    }
   }
 
   private int dp(int value) {
@@ -351,6 +384,9 @@ public class MainActivity extends AppCompatActivity {
                             + " đầy đủ không được gửi; key được mã hóa trên máy.")
                     .setPositiveButton("Đóng", null)
                     .show()));
+    settingsDetail = true;
+    toolbar.setTitle("Kết nối AI");
+    settingsBack();
     EditText key = field("Key AI Studio", "");
     key.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
     key.setTypeface(
@@ -483,19 +519,13 @@ public class MainActivity extends AppCompatActivity {
             R.drawable.ic_add,
             () -> {
               PopupMenu menu = new PopupMenu(this, outer);
-              String[] labels = {"Ghi nhanh", "Nhắc hạn", "Lịch sử", "Xóa hội thoại"};
+              String[] labels = {"Ghi nhanh", "Xóa hội thoại"};
               for (String label : labels) menu.getMenu().add(label);
               menu.setOnMenuItemClickListener(
                   item -> {
                     switch (item.getTitle().toString()) {
                       case "Ghi nhanh":
                         quickEntry(null);
-                        break;
-                      case "Nhắc hạn":
-                        rules();
-                        break;
-                      case "Lịch sử":
-                        history();
                         break;
                       default:
                         mutate(() -> ChatHistory.clear(ledger));
@@ -544,16 +574,27 @@ public class MainActivity extends AppCompatActivity {
     try {
       JSONArray periods = new JSONArray(raw);
       if (periods.length() == 0) {
-        rules();
+        new MaterialAlertDialogBuilder(this)
+            .setTitle("Báo cáo định kỳ")
+            .setMessage(
+                "Chưa có báo cáo định kỳ. App tạo báo cáo tuần và tháng khi kỳ kết thúc. Bạn vẫn có"
+                    + " thể xem mọi kỳ ở trang Báo cáo.")
+            .setPositiveButton("Đóng", null)
+            .show();
         return;
       }
       String[] names = new String[periods.length()];
       for (int i = 0; i < periods.length(); i++) {
         JSONObject p = periods.optJSONObject(i);
-        names[i] = p.optString("kind") + " · " + p.optString("start") + " → " + p.optString("end");
+        names[i] =
+            (p.optString("kind").equals("week") ? "Tuần" : "Tháng")
+                + " · "
+                + p.optString("start")
+                + " → "
+                + p.optString("end");
       }
       new MaterialAlertDialogBuilder(this)
-          .setTitle("Báo cáo tự động")
+          .setTitle("Báo cáo định kỳ")
           .setItems(
               names,
               (d, w) -> {
@@ -825,7 +866,6 @@ public class MainActivity extends AppCompatActivity {
               JSONObject action = actions.optJSONObject(index);
               LinearLayout f = form();
               EditText amount = field("Số tiền VND", String.valueOf(action.optLong("amount"))),
-                  category = field("Danh mục", action.optString("category", "Sinh hoạt/Khác")),
                   note = field("Nội dung", action.optString("note")),
                   date = field("Ngày YYYY-MM-DD", action.optString("date", Ledger.today())),
                   fee = field("Phí VND", String.valueOf(action.optLong("fee")));
@@ -844,7 +884,12 @@ public class MainActivity extends AppCompatActivity {
                         .indexOf(ledger.account(action.optString("to")).optString("name")));
               } catch (Exception ignored) {
               }
-              f.addView(category);
+              Spinner category = spinner(f, "Danh mục", Ledger.STANDARD_CATEGORIES);
+              int categoryIndex = Ledger.STANDARD_CATEGORIES.indexOf(action.optString("category"));
+              category.setSelection(
+                  categoryIndex >= 0
+                      ? categoryIndex
+                      : Ledger.STANDARD_CATEGORIES.indexOf("Sinh hoạt/Khác"));
               f.addView(note);
               f.addView(date);
               f.addView(fee);
@@ -861,7 +906,7 @@ public class MainActivity extends AppCompatActivity {
                           Ledger.put(action, "fee", charge);
                           Ledger.put(action, "account", source.getSelectedItem().toString());
                           Ledger.put(action, "to", to.getSelectedItem().toString());
-                          Ledger.put(action, "category", category.getText().toString());
+                          Ledger.put(action, "category", category.getSelectedItem().toString());
                           Ledger.put(action, "note", note.getText().toString());
                           Ledger.put(action, "date", date.getText().toString());
                         });
@@ -883,7 +928,8 @@ public class MainActivity extends AppCompatActivity {
   private List<String> accountNames() {
     List<String> names = new ArrayList<>();
     for (int i = 0; i < ledger.array("accounts").length(); i++)
-      names.add(ledger.array("accounts").optJSONObject(i).optString("name"));
+      if (!ledger.array("accounts").optJSONObject(i).optBoolean("archived"))
+        names.add(ledger.array("accounts").optJSONObject(i).optString("name"));
     return names;
   }
 
@@ -917,14 +963,15 @@ public class MainActivity extends AppCompatActivity {
     f.addView(amount);
     Spinner source = spinner(f, "Nguồn tiền", accountNames()),
         to = spinner(f, "Nguồn đích (chuyển / trả thẻ)", accountNames());
-    EditText category = field("Danh mục hai cấp", "Sinh hoạt/Khác"),
-        note = field("Nội dung", rule == null ? "" : rule.optString("name")),
+    Spinner category = spinner(f, "Danh mục", Ledger.STANDARD_CATEGORIES);
+    category.setSelection(Ledger.STANDARD_CATEGORIES.indexOf("Sinh hoạt/Khác"));
+    EditText note = field("Nội dung", rule == null ? "" : rule.optString("name")),
         date = field("Ngày YYYY-MM-DD", Ledger.today()),
         fee = field("Phí chuyển khoản", "0"),
         person = field("Đối tượng vay / cho vay", ""),
         debt = field("Mã khoản nợ gốc (xem Nhắc hạn)", ""),
         due = field("Hạn trả YYYY-MM-DD (có thể trống)", "");
-    for (EditText e : List.of(category, note, date, fee, person, debt, due)) f.addView(e);
+    for (EditText e : List.of(note, date, fee, person, debt, due)) f.addView(e);
     dialog(
         "Ghi nhanh offline",
         f,
@@ -941,7 +988,7 @@ public class MainActivity extends AppCompatActivity {
                   "to",
                   to.getSelectedItem().toString(),
                   "category",
-                  category.getText().toString(),
+                  category.getSelectedItem().toString(),
                   "note",
                   note.getText().toString(),
                   "date",
@@ -1000,6 +1047,7 @@ public class MainActivity extends AppCompatActivity {
     body.addView(scroll);
     for (int i = 0; i < ledger.array("accounts").length(); i++) {
       JSONObject account = ledger.array("accounts").optJSONObject(i);
+      if (account.optBoolean("archived")) continue;
       LinearLayout row = new LinearLayout(this);
       row.setGravity(Gravity.CENTER_VERTICAL);
       row.setPadding(0, dp(12), 0, dp(12));
@@ -1031,10 +1079,12 @@ public class MainActivity extends AppCompatActivity {
               () -> {
                 PopupMenu menu = new PopupMenu(this, row);
                 menu.getMenu().add("Đối soát");
+                menu.getMenu().add("Xóa nguồn tiền");
                 if (account.optString("type").equals("card")) menu.getMenu().add("Sao kê");
                 menu.setOnMenuItemClickListener(
                     item -> {
                       if (item.getTitle().equals("Sao kê")) cardStatement(account);
+                      else if (item.getTitle().equals("Xóa nguồn tiền")) removeAccount(account);
                       else reconcileAccount(account);
                       return true;
                     });
@@ -1043,44 +1093,110 @@ public class MainActivity extends AppCompatActivity {
       row.addView(options, new LinearLayout.LayoutParams(dp(48), dp(48)));
       f.addView(row);
     }
-    f.addView(
-        button(
-            "Thêm nguồn tiền",
-            () -> {
-              LinearLayout form = form();
-              EditText name = field("Tên: MB, MoMo…", ""),
-                  alias = field("Bí danh, ngăn cách dấu phẩy", ""),
-                  statement = field("Ngày chốt sao kê (thẻ)", "25"),
-                  payment = field("Ngày hạn thanh toán (thẻ)", "5");
-              form.addView(name);
-              form.addView(alias);
-              Spinner type =
-                  spinner(
-                      form, "Loại nguồn tiền", List.of("cash", "bank", "wallet", "saving", "card"));
-              form.addView(statement);
-              form.addView(payment);
-              dialog(
-                  "Thêm nguồn tiền",
-                  form,
-                  "Thêm",
-                  () -> {
-                    int sd = Integer.parseInt(statement.getText().toString()),
-                        pd = Integer.parseInt(payment.getText().toString());
-                    if (sd < 1 || sd > 28 || pd < 1 || pd > 28)
-                      throw new IllegalArgumentException("Ngày thẻ từ 1 đến 28");
-                    mutate(
-                        () -> {
-                          ledger.addAccount(
-                              name.getText().toString(),
-                              type.getSelectedItem().toString(),
-                              alias.getText().toString());
-                          JSONObject a = ledger.account(name.getText().toString());
-                          Ledger.put(a, "statementDay", sd);
-                          Ledger.put(a, "paymentDay", pd);
-                        });
-                    accounts();
-                  });
-            }));
+    f.addView(button("Thêm nguồn tiền", this::addAccountDialog));
+    boolean archived = false;
+    for (int i = 0; i < ledger.array("accounts").length(); i++)
+      archived |= ledger.array("accounts").optJSONObject(i).optBoolean("archived");
+    if (archived)
+      f.addView(
+          button(
+              "Nguồn đã ngừng sử dụng",
+              () -> {
+                LinearLayout list = form();
+                for (int i = 0; i < ledger.array("accounts").length(); i++) {
+                  JSONObject account = ledger.array("accounts").optJSONObject(i);
+                  if (account.optBoolean("archived"))
+                    list.addView(
+                        button(
+                            "Khôi phục · " + account.optString("name"),
+                            () -> {
+                              mutate(() -> Ledger.put(account, "archived", false));
+                              accounts();
+                              Toast.makeText(this, "Đã khôi phục nguồn tiền", Toast.LENGTH_SHORT)
+                                  .show();
+                            }));
+                }
+                dialog("Nguồn đã ngừng sử dụng", list, "Đóng", () -> {});
+              }));
+  }
+
+  private void removeAccount(JSONObject account) {
+    boolean used = ledger.accountHasHistory(account.optString("id"));
+    new MaterialAlertDialogBuilder(this)
+        .setTitle(used ? "Ngừng sử dụng nguồn tiền?" : "Xóa nguồn tiền?")
+        .setMessage(
+            used
+                ? "Nguồn này đã có dữ liệu. Lịch sử và số dư vẫn được giữ trong báo cáo; nguồn sẽ"
+                    + " ẩn khỏi danh sách ghi mới. Bạn có thể khôi phục sau."
+                : "Xóa " + account.optString("name") + " khỏi sổ. Nguồn này chưa có dữ liệu.")
+        .setNegativeButton("Hủy", null)
+        .setPositiveButton(
+            used ? "Ngừng sử dụng" : "Xóa",
+            (d, w) -> {
+              try {
+                mutate(() -> ledger.removeAccount(account.optString("id")));
+                accounts();
+              } catch (Exception e) {
+                error(e);
+              }
+            })
+        .show();
+  }
+
+  private void addAccountDialog() {
+    LinearLayout f = form();
+    EditText name = field("Tên nguồn tiền", ""),
+        alias = field("Tên gọi khác khi chat (tùy chọn)", "");
+    f.addView(name);
+    f.addView(alias);
+    f.addView(text("Ví dụ: vcb, bank — các tên cùng chỉ một nguồn tiền.", 13));
+    Spinner type =
+        spinner(
+            f,
+            "Loại nguồn tiền",
+            List.of("Tiền mặt", "Ngân hàng", "Ví điện tử", "Tiết kiệm", "Thẻ tín dụng"));
+    LinearLayout dates = form();
+    EditText statement = field("Ngày chốt sao kê", "25"),
+        payment = field("Ngày đến hạn thanh toán", "5");
+    statement.setInputType(InputType.TYPE_CLASS_NUMBER);
+    payment.setInputType(InputType.TYPE_CLASS_NUMBER);
+    dates.addView(statement);
+    dates.addView(payment);
+    f.addView(dates);
+    dates.setVisibility(View.GONE);
+    type.setOnItemSelectedListener(
+        new AdapterView.OnItemSelectedListener() {
+          public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+            dates.setVisibility(position == 4 ? View.VISIBLE : View.GONE);
+          }
+
+          public void onNothingSelected(AdapterView<?> parent) {}
+        });
+    dialog(
+        "Thêm nguồn tiền",
+        f,
+        "Thêm",
+        () -> {
+          boolean card = type.getSelectedItemPosition() == 4;
+          int sd = card ? Integer.parseInt(statement.getText().toString()) : 0;
+          int pd = card ? Integer.parseInt(payment.getText().toString()) : 0;
+          if (card && (sd < 1 || sd > 28 || pd < 1 || pd > 28))
+            throw new IllegalArgumentException("Ngày thẻ từ 1 đến 28");
+          mutate(
+              () -> {
+                ledger.addAccount(
+                    name.getText().toString(),
+                    new String[] {"cash", "bank", "wallet", "saving", "card"}
+                        [type.getSelectedItemPosition()],
+                    alias.getText().toString());
+                if (card) {
+                  JSONObject account = ledger.account(name.getText().toString());
+                  Ledger.put(account, "statementDay", sd);
+                  Ledger.put(account, "paymentDay", pd);
+                }
+              });
+          accounts();
+        });
   }
 
   private void cardStatement(JSONObject account) {
@@ -1159,34 +1275,57 @@ public class MainActivity extends AppCompatActivity {
   }
 
   private void history() {
-    screen("Lịch sử", 3);
+    screen("Giao dịch", 3);
     body.removeAllViews();
     ScrollView scroll = new ScrollView(this);
     LinearLayout f = form();
     scroll.addView(f);
     body.addView(scroll);
+    if (ledger.array("events").length() == 0)
+      f.addView(
+          text("Chưa có giao dịch. Ghi bằng Chat hoặc Ghi nhanh, rồi xác nhận để lưu vào sổ.", 15));
     for (int i = ledger.array("events").length() - 1; i >= 0; i--) {
       JSONObject e = ledger.array("events").optJSONObject(i);
       f.addView(
           text(
-              e.optString("date")
-                  + " · "
-                  + Ledger.typeLabel(e.optString("type"))
-                  + " · "
-                  + Ledger.money(e.optLong("amount"))
-                  + "\n"
-                  + e.optString("note")
-                  + " · "
-                  + e.optString("category")
-                  + "\n"
-                  + (e.optBoolean("active", true) ? "Đang hiệu lực" : "Đã hoàn tác")
-                  + " · "
-                  + e.optString("id"),
-              14));
+              Ledger.typeLabel(e.optString("type")) + " · " + Ledger.money(e.optLong("amount")),
+              18));
+      String source;
+      try {
+        source = ledger.account(e.optString("account")).optString("name");
+      } catch (Exception ignored) {
+        source = "";
+      }
+      String description = e.optString("date") + " · " + source + "\n" + e.optString("note");
+      if (e.optLong("income") != 0 || e.optLong("expense") != 0)
+        description += " · " + e.optString("category").replace("/", " / ");
+      if (!e.optBoolean("active", true)) description += "\nĐã hoàn tác";
+      f.addView(text(description, 14));
+      f.addView(
+          button(
+              "Chi tiết giao dịch",
+              () -> {
+                LinearLayout details = form();
+                details.addView(
+                    text(
+                        "Ngày: "
+                            + e.optString("date")
+                            + "\nNghiệp vụ: "
+                            + Ledger.typeLabel(e.optString("type"))
+                            + "\nSố tiền: "
+                            + Ledger.money(e.optLong("amount"))
+                            + "\nNội dung: "
+                            + e.optString("note")
+                            + "\nDanh mục: "
+                            + e.optString("category")
+                            + "\nMã giao dịch: "
+                            + e.optString("id"),
+                        14));
+                dialog("Giao dịch", details, "Đóng", () -> {});
+              }));
       if (e.optBoolean("active", true))
         f.addView(button("Hoàn tác nhóm", () -> undo(e.optString("requestId"))));
     }
-    f.addView(text("Nhật ký thay đổi\n" + ledger.array("audit").toString(), 11));
   }
 
   private void reportDialog() {
@@ -1197,8 +1336,19 @@ public class MainActivity extends AppCompatActivity {
             f, "Kỳ báo cáo", List.of("Tháng này", "Hôm nay", "Tuần này", "Năm này", "Tùy chọn"));
     EditText start = field("Từ YYYY-MM-DD", now.withDayOfMonth(1).toString()),
         end = field("Đến YYYY-MM-DD", now.toString());
-    f.addView(start);
-    f.addView(end);
+    LinearLayout custom = form();
+    custom.addView(start);
+    custom.addView(end);
+    f.addView(custom);
+    custom.setVisibility(View.GONE);
+    period.setOnItemSelectedListener(
+        new AdapterView.OnItemSelectedListener() {
+          public void onItemSelected(AdapterView<?> p, View v, int position, long id) {
+            custom.setVisibility(position == 4 ? View.VISIBLE : View.GONE);
+          }
+
+          public void onNothingSelected(AdapterView<?> p) {}
+        });
     dialog(
         "Báo cáo",
         f,
@@ -1229,7 +1379,7 @@ public class MainActivity extends AppCompatActivity {
     LinearLayout f = form();
     scroll.addView(f);
     body.addView(scroll);
-    f.addView(button("Chọn kỳ", this::reportDialog));
+    f.addView(button("Kỳ xem · " + start + " → " + end, this::reportDialog));
     JSONObject totals = ledger.totals(start, end);
     MaterialCardView summary = card(f, false);
     LinearLayout content = form();
@@ -1238,17 +1388,17 @@ public class MainActivity extends AppCompatActivity {
     TextView spending = text(Ledger.money(totals.optLong("expense")), 30);
     spending.setTypeface(null, android.graphics.Typeface.BOLD);
     content.addView(spending);
-    content.addView(
-        text(
-            "Thu nhập " + Ledger.money(totals.optLong("income")) + " · " + start + " → " + end,
-            14));
-    f.addView(text("Theo danh mục", 18));
+    content.addView(text("Thu nhập trong kỳ\n" + Ledger.money(totals.optLong("income")), 14));
+    f.addView(text("Chi tiêu theo danh mục", 18));
     JSONObject groups = ledger.totals(start, end).optJSONObject("groups");
     long max = 1;
     for (Iterator<String> it = groups.keys(); it.hasNext(); )
       max = Math.max(max, Math.abs(groups.optLong(it.next())));
-    for (Iterator<String> it = groups.keys(); it.hasNext(); ) {
-      String label = it.next();
+    List<String> categories = new ArrayList<>();
+    groups.keys().forEachRemaining(categories::add);
+    categories.sort((a, b) -> Long.compare(groups.optLong(b), groups.optLong(a)));
+    if (categories.isEmpty()) f.addView(text("Chưa có chi tiêu trong kỳ này.", 14));
+    for (String label : categories) {
       f.addView(text(label + " · " + Ledger.money(groups.optLong(label)), 15));
       ProgressBar bar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
       bar.setProgressTintList(
@@ -1260,20 +1410,28 @@ public class MainActivity extends AppCompatActivity {
     }
     f.addView(
         button(
-            "Chi tiết báo cáo",
+            "Tùy chọn báo cáo",
             () -> {
-              LinearLayout details = form();
-              details.addView(text(ledger.report(start, end), 15));
-              dialog("Báo cáo", details, "Đóng", () -> {});
+              new MaterialAlertDialogBuilder(this)
+                  .setTitle("Báo cáo")
+                  .setItems(
+                      new String[] {"Xem chi tiết", "Báo cáo định kỳ", "Xuất file văn bản"},
+                      (d, w) -> {
+                        if (w == 0) {
+                          LinearLayout details = form();
+                          details.addView(text(ledger.report(start, end), 15));
+                          dialog("Chi tiết báo cáo", details, "Đóng", () -> {});
+                        } else if (w == 1) reportInbox();
+                        else
+                          exportDocument(
+                              ledger
+                                  .report(start, end)
+                                  .getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                              "text/plain",
+                              "bao-cao-" + end + ".txt");
+                      })
+                  .show();
             }));
-    f.addView(
-        button(
-            "Xuất báo cáo TXT",
-            () ->
-                exportDocument(
-                    ledger.report(start, end).getBytes(java.nio.charset.StandardCharsets.UTF_8),
-                    "text/plain",
-                    "bao-cao-" + end + ".txt")));
   }
 
   private void rules() {
@@ -1283,7 +1441,14 @@ public class MainActivity extends AppCompatActivity {
     LinearLayout f = form();
     scroll.addView(f);
     body.addView(scroll);
-    f.addView(text(ledger.obligations(), 14));
+    String obligations = ledger.obligations();
+    f.addView(
+        text(
+            obligations.isBlank()
+                ? "Chưa có khoản cần theo dõi. Thêm khoản định kỳ hoặc ghi công nợ bằng Chat / Ghi"
+                      + " nhanh."
+                : obligations,
+            15));
     for (int i = 0; i < ledger.array("rules").length(); i++) {
       JSONObject r = ledger.array("rules").optJSONObject(i);
       f.addView(
@@ -1366,7 +1531,7 @@ public class MainActivity extends AppCompatActivity {
             }));
   }
 
-  private void settings() {
+  private void aiSettings() {
     screen("Cài đặt", 4);
     body.removeAllViews();
     ScrollView scroll = new ScrollView(this);
@@ -1378,7 +1543,6 @@ public class MainActivity extends AppCompatActivity {
     key.setTypeface(
         android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.NORMAL));
     EditText model = field("Model", ledger.data.optString("model", Assistant.DEFAULT_MODEL));
-    f.addView(text("Kết nối AI", 24));
     f.addView(text("Google AI Studio", 14));
     f.addView(key);
     f.addView(model);
@@ -1493,15 +1657,79 @@ public class MainActivity extends AppCompatActivity {
                             + " Sao lưu không chứa key.")
                     .setPositiveButton("Đóng", null)
                     .show()));
-    f.addView(text("Tùy chọn", 18));
+  }
+
+  private void settingRow(LinearLayout f, String title, String subtitle, Runnable action) {
+    f.addView(button(title + "  ›", action));
+    TextView note = text(subtitle, 13);
+    note.setTextColor(color(com.google.android.material.R.attr.colorOnSurfaceVariant));
+    note.setPadding(dp(16), 0, dp(16), dp(12));
+    f.addView(note);
+  }
+
+  private void settings() {
+    if (connectionDraftSaver != null && currentScreen.equals("Cài đặt")) {
+      draftHandler.removeCallbacks(connectionDraftSaver);
+      connectionDraftSaver.run();
+    }
+    connectionDraftSaver = null;
+    screen("Cài đặt", 4);
+    body.removeAllViews();
+    ScrollView scroll = new ScrollView(this);
+    LinearLayout f = form();
+    scroll.addView(f);
+    body.addView(scroll);
+    settingRow(f, "Kết nối AI", "Key Google AI Studio và model", this::aiSettings);
+    settingRow(f, "Nhắc nhở", "Giờ nhắc hạn và quyền thông báo", this::notificationSettings);
+    settingRow(f, "Giao diện", "Sáng, tối hoặc theo hệ thống", this::appearanceSettings);
+    settingRow(f, "Dữ liệu", "Danh mục, sao lưu và khôi phục", this::dataSettings);
+    settingRow(f, "Giới thiệu", "Tính năng, phiên bản và cách dùng", this::about);
+  }
+
+  private void settingsBack() {
+    toolbar.setNavigationIcon(R.drawable.ic_arrow_back);
+    toolbar.setNavigationContentDescription("Quay lại Cài đặt");
+    toolbar.setNavigationOnClickListener(v -> settings());
+  }
+
+  private LinearLayout settingsPage(String title) {
+    screen("Cài đặt", 4);
+    settingsDetail = true;
+    toolbar.setTitle(title);
+    settingsBack();
+    body.removeAllViews();
+    ScrollView scroll = new ScrollView(this);
+    LinearLayout f = form();
+    scroll.addView(f);
+    body.addView(scroll);
+    return f;
+  }
+
+  private void notificationSettings() {
+    LinearLayout f = settingsPage("Nhắc nhở");
+    f.addView(
+        text(
+            "Nhắc các khoản sắp đến hạn và thông báo khi có báo cáo tuần, tháng. Không tự ghi giao"
+                + " dịch thanh toán.",
+            15));
     EditText hour =
         field(
-            "Giờ thông báo hằng ngày (0–23)",
-            String.valueOf(ledger.data.optInt("notificationHour", 20)));
+            "Giờ nhắc mỗi ngày (0–23)", String.valueOf(ledger.data.optInt("notificationHour", 20)));
+    hour.setInputType(InputType.TYPE_CLASS_NUMBER);
     f.addView(hour);
     f.addView(
         button(
-            "Thông báo",
+            "Lưu giờ nhắc",
+            () -> {
+              int h = Integer.parseInt(hour.getText().toString());
+              if (h < 0 || h > 23) throw new IllegalArgumentException("Chọn giờ từ 0 đến 23");
+              mutate(() -> Ledger.put(ledger.data, "notificationHour", h));
+              ReminderReceiver.schedule(this);
+              Toast.makeText(this, "Đã lưu giờ nhắc", Toast.LENGTH_SHORT).show();
+            }));
+    f.addView(
+        button(
+            "Cho phép thông báo",
             () -> {
               if (Build.VERSION.SDK_INT >= 33
                   && checkSelfPermission("android.permission.POST_NOTIFICATIONS")
@@ -1509,103 +1737,114 @@ public class MainActivity extends AppCompatActivity {
                 requestPermissions(new String[] {"android.permission.POST_NOTIFICATIONS"}, 10);
               else Toast.makeText(this, "Thông báo đã được cho phép", Toast.LENGTH_SHORT).show();
             }));
+  }
+
+  private void appearanceSettings() {
+    String theme = getSharedPreferences("appearance", 0).getString("theme", "system");
+    new MaterialAlertDialogBuilder(this)
+        .setTitle("Giao diện")
+        .setSingleChoiceItems(
+            new String[] {"Theo hệ thống", "Sáng", "Tối"},
+            theme.equals("dark") ? 2 : theme.equals("light") ? 1 : 0,
+            (d, w) -> {
+              getSharedPreferences("appearance", 0)
+                  .edit()
+                  .putString("theme", new String[] {"system", "light", "dark"}[w])
+                  .apply();
+              d.dismiss();
+              recreate();
+            })
+        .show();
+  }
+
+  private void dataSettings() {
+    LinearLayout f = settingsPage("Dữ liệu");
+    settingRow(f, "Danh mục", "Bộ danh mục có sẵn để phân loại thu chi", this::categorySettings);
+    settingRow(
+        f,
+        "Sao lưu mã hóa",
+        "Lưu sổ vào file có mật khẩu; không chứa API key",
+        () -> passwordDialog(false));
+    settingRow(
+        f, "Khôi phục sao lưu", "Thay sổ hiện tại bằng bản sao đã lưu", () -> passwordDialog(true));
+    settingRow(
+        f,
+        "Xuất dữ liệu JSON",
+        "File đọc được, dành cho xử lý bằng công cụ khác",
+        this::exportData);
+  }
+
+  private void categorySettings() {
+    LinearLayout f = form();
+    String previous = "";
+    for (String category : Ledger.STANDARD_CATEGORIES) {
+      String[] parts = category.split("/", 2);
+      if (!parts[0].equals(previous)) {
+        f.addView(text(parts[0], 18));
+        previous = parts[0];
+      }
+      f.addView(text(parts[1], 14));
+    }
+    dialog("Danh mục có sẵn", f, "Đóng", () -> {});
+  }
+
+  private void exportData() {
+    JSONObject clean;
+    try {
+      clean = new JSONObject(ledger.data.toString());
+    } catch (Exception e) {
+      throw new IllegalArgumentException(e);
+    }
+    clean.remove("apiKey");
+    clean.remove("pending");
+    new MaterialAlertDialogBuilder(this)
+        .setTitle("Xuất dữ liệu JSON")
+        .setMessage(
+            "File chứa dữ liệu tài chính dạng đọc được, không có mật khẩu. Để khôi phục sổ trong"
+                + " app, hãy dùng Sao lưu mã hóa.")
+        .setNegativeButton("Hủy", null)
+        .setPositiveButton(
+            "Xuất",
+            (d, w) ->
+                exportDocument(
+                    clean.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                    "application/json",
+                    "finance-export.json"))
+        .show();
+  }
+
+  private void about() {
+    LinearLayout f = settingsPage("Giới thiệu");
+    f.addView(text("Thư ký tài chính", 26));
+    f.addView(text("Phiên bản " + BuildConfig.VERSION_NAME, 14));
     f.addView(
-        button(
-            "Giao diện",
-            () ->
-                new MaterialAlertDialogBuilder(this)
-                    .setTitle("Giao diện")
-                    .setSingleChoiceItems(
-                        new String[] {"Theo hệ thống", "Sáng", "Tối"},
-                        getSharedPreferences("appearance", 0)
-                                .getString("theme", "system")
-                                .equals("dark")
-                            ? 2
-                            : getSharedPreferences("appearance", 0)
-                                    .getString("theme", "system")
-                                    .equals("light")
-                                ? 1
-                                : 0,
-                        (d, w) -> {
-                          getSharedPreferences("appearance", 0)
-                              .edit()
-                              .putString("theme", new String[] {"system", "light", "dark"}[w])
-                              .apply();
-                          d.dismiss();
-                          recreate();
-                        })
-                    .show()));
+        text(
+            "Sổ thu chi cá nhân trên điện thoại. Ghi bằng chat hoặc biểu mẫu; bạn xem và xác nhận"
+                + " trước khi giao dịch được lưu.",
+            16));
+    f.addView(text("Bạn có thể làm gì", 18));
     f.addView(
-        button(
-            "Lưu cài đặt",
-            () -> {
-              int h = Integer.parseInt(hour.getText().toString());
-              if (h < 0 || h > 23) throw new IllegalArgumentException("Giờ không hợp lệ");
-              mutate(
-                  () -> {
-                    Ledger.put(
-                        ledger.data, "apiKey", GoogleAi.normalizeKey(key.getText().toString()));
-                    Ledger.put(
-                        ledger.data,
-                        "model",
-                        model.getText().toString().trim().isEmpty()
-                            ? Assistant.DEFAULT_MODEL
-                            : model.getText().toString().trim());
-                    Ledger.put(ledger.data, "notificationHour", h);
-                    Ledger.put(ledger.data, "onboarded", true);
-                  });
-              ReminderReceiver.schedule(this);
-              Toast.makeText(this, "Đã lưu", Toast.LENGTH_SHORT).show();
-            }));
+        text(
+            "• Ghi thu, chi và chuyển tiền giữa các nguồn.\n"
+                + "• Theo dõi tiền mặt, ngân hàng, ví, tiết kiệm và thẻ tín dụng.\n"
+                + "• Theo dõi cho vay, đi vay, thu hồi và trả nợ.\n"
+                + "• Xem báo cáo theo kỳ và danh mục.\n"
+                + "• Đối soát số dư, xem sao kê thẻ và hoàn tác giao dịch.\n"
+                + "• Nhắc các khoản đến hạn; xem báo cáo định kỳ.\n"
+                + "• Sao lưu có mật khẩu và khôi phục sổ.",
+            15));
+    f.addView(text("Chat & AI", 18));
     f.addView(
-        button(
-            "Danh mục",
-            () -> {
-              LinearLayout form = form();
-              EditText category = field("Nhóm/Danh mục con", "");
-              form.addView(text(ledger.array("categories").toString(), 13));
-              form.addView(category);
-              dialog(
-                  "Thêm danh mục",
-                  form,
-                  "Thêm",
-                  () -> {
-                    String c = category.getText().toString().trim();
-                    if (!c.contains("/") || c.startsWith("/") || c.endsWith("/"))
-                      throw new IllegalArgumentException("Dùng Nhóm/Danh mục con");
-                    mutate(() -> ledger.array("categories").put(c));
-                  });
-            }));
-    f.addView(button("Báo cáo tự động", () -> reportInbox()));
-    f.addView(button("Sao lưu mã hóa", () -> passwordDialog(false)));
-    f.addView(button("Khôi phục sao lưu", () -> passwordDialog(true)));
+        text(
+            "Kết nối bằng key Google AI Studio của bạn và chọn model. Không có key vẫn có thể ghi"
+                + " bằng biểu mẫu. Chat giữ 5 tin nhắn gần nhất; xóa chat không xóa thu chi.",
+            15));
+    f.addView(text("Dữ liệu của bạn", 18));
     f.addView(
-        button(
-            "Xuất dữ liệu",
-            () -> {
-              JSONObject clean;
-              try {
-                clean = new JSONObject(ledger.data.toString());
-              } catch (Exception e) {
-                throw new IllegalArgumentException(e);
-              }
-              clean.remove("apiKey");
-              clean.remove("pending");
-              new MaterialAlertDialogBuilder(this)
-                  .setTitle("Xuất dữ liệu riêng tư")
-                  .setMessage(
-                      "JSON chứa thông tin tài chính và hội thoại ở dạng đọc được. Chọn nơi lưu bạn"
-                          + " kiểm soát.")
-                  .setNegativeButton("Hủy", null)
-                  .setPositiveButton(
-                      "Xuất",
-                      (d, w) ->
-                          exportDocument(
-                              clean.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8),
-                              "application/json",
-                              "finance-export.json"))
-                  .show();
-            }));
+        text(
+            "Sổ được mã hóa trên máy. Khi dùng AI, tin nhắn và ngữ cảnh cần thiết được gửi tới"
+                + " Google. Bản sao lưu không chứa API key. App cho phép chụp và quay màn hình.",
+            15));
   }
 
   private void passwordDialog(boolean restore) {

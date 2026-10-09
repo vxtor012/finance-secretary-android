@@ -8,7 +8,7 @@ Bản 1.2 chuyển hoàn toàn sang Google AI Studio. Cài đè bản cũ giữ 
 
 1. Mở [Releases](https://github.com/vxtor012/finance-secretary-android/releases/latest), tải `finance-secretary.apk`.
 2. Android 8.0 trở lên: cho phép cài ứng dụng từ nguồn tải APK khi Android hỏi.
-3. Nhập API key Google AI Studio. Key và model tự lưu khi chỉnh sửa hoặc rời Cài đặt. Bấm **Kiểm tra kết nối** để kiểm tra key và gọi thử model đã chọn. Lỗi xác thực, hạn mức, chính sách hoặc model được hiển thị cụ thể.
+3. Vào Cài đặt → Kết nối AI. Nhập API key Google AI Studio. Key và model tự lưu khi chỉnh sửa hoặc rời Cài đặt. Bấm **Kiểm tra kết nối** để kiểm tra key và gọi thử model đã chọn. Lỗi xác thực, hạn mức, chính sách hoặc model được hiển thị cụ thể.
 4. Cho phép thông báo để nhận nhắc hạn và báo cáo. Thêm MB, MoMo, thẻ ở Nguồn tiền nếu cần. Tiền mặt đã có sẵn, không bắt buộc nhập số dư ban đầu.
 
 ## Sử dụng
@@ -19,7 +19,7 @@ Bản 1.2 chuyển hoàn toàn sang Google AI Studio. Cài đè bản cũ giữ 
 - Trả nợ cần mã khoản gốc trong Nhắc hạn để tránh phân bổ sai khi cùng người có nhiều khoản.
 - Nghĩa vụ định kỳ chỉ trở thành giao dịch khi bạn bấm xác nhận và duyệt đề xuất. Nhắc hạn không tự ghi thanh toán. Có thể tạm dừng và kích hoạt lại.
 - Đối soát số dư tại Nguồn tiền. Trước đó app chỉ báo biến động, không khẳng định tiền thực có. Mốc đối soát là số dư ở thời điểm ghi nhận; sửa giao dịch trước mốc thay đổi báo cáo nhưng không tự đổi số dư đã xác minh.
-- Báo cáo theo ngày/tuần/tháng/năm hoặc kỳ tùy chọn có phân bổ chi phí, so sánh kỳ trước, dòng tiền, nợ và nghĩa vụ. Báo cáo tự động của kỳ hoàn tất có trong Cài đặt → Báo cáo tự động gần nhất.
+- Báo cáo theo ngày/tuần/tháng/năm hoặc kỳ tùy chọn có phân bổ chi phí, so sánh kỳ trước, dòng tiền, nợ và nghĩa vụ. Báo cáo định kỳ của kỳ hoàn tất có trong Báo cáo → Tùy chọn báo cáo → Báo cáo định kỳ.
 - Sao lưu mã hóa `.fsb` bằng mật khẩu ít nhất 10 ký tự; khôi phục trên thiết bị mới. API key không có trong sao lưu. JSON xuất ra đọc được và có dữ liệu tài chính/hội thoại, cần lưu riêng tư.
 
 ## Build và release
@@ -57,3 +57,13 @@ Kiểm thử tích hợp Android thực tế: `./gradlew assembleDebug assembleD
 Phiên bản đầu là app cho một người trên thiết bị Android, chưa đồng bộ nhiều thiết bị hay ngân hàng. Thẻ hiển thị dư nợ, sao kê theo giao dịch từng kỳ và ngày sao kê/hạn trả; không nhập hoặc khớp sao kê ngân hàng tự động. Số dư quá khứ trong báo cáo là dòng tiền kỳ; phần nguồn tiền thể hiện số dư hiện tại từ mốc đối soát, không giả làm số dư cuối kỳ cũ. Thông báo Android là lịch không chính xác tuyệt đối; force-stop app sẽ ngừng nhắc đến khi mở lại. App yêu cầu xác thực khóa màn hình khi mở nếu thiết bị đã đặt khóa; chưa có PIN riêng. AI miễn phí phụ thuộc Google AI Studio; app không tự đổi model.
 
 Đặc tả gốc loại app native khỏi MVP; yêu cầu triển khai Android trong cuộc trao đổi này thay thế giới hạn đó. Các chức năng ngoài phạm vi khác giữ theo tài liệu gốc.
+
+## Bản 1.3
+
+- Cho phép chụp và quay màn hình. Icon app hình sổ, hỗ trợ adaptive icon và themed icon Android 13+.
+- Chỉ thẻ tín dụng có ngày sao kê và ngày thanh toán. Tên gọi khác khi chat là tùy chọn, ví dụ `vcb, bank`.
+- Xóa nguồn chưa có dữ liệu; nguồn đã có giao dịch hoặc mốc đối soát được ngừng sử dụng để giữ lịch sử. Có thể khôi phục. Giữ ít nhất một nguồn đang dùng; xử lý đề xuất đang chờ trước khi xóa nguồn liên quan.
+- Bộ 40 danh mục cố định cho giao dịch mới; danh mục của giao dịch cũ giữ nguyên. Không có thao tác thêm/sửa/xóa danh mục.
+- Cài đặt chia Kết nối AI, Nhắc nhở, Giao diện, Dữ liệu và Giới thiệu. Key/model tự lưu; giờ nhắc lưu riêng.
+
+Điều hướng: Chat · Sổ · Báo cáo · Cài đặt. Sổ có Nguồn tiền, Giao dịch và Nhắc hạn. Nút + ở Chat chỉ có Ghi nhanh và Xóa hội thoại.

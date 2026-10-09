@@ -99,10 +99,42 @@ public class SmokeInstrumentation extends Instrumentation {
             check(
                 findButton(relaunched.getWindow().getDecorView(), "Thêm nguồn tiền") != null,
                 "Account screen renders");
+            findButton(relaunched.getWindow().getDecorView(), "Giao dịch").performClick();
+            check(
+                findNavigation(relaunched.getWindow().getDecorView()).getSelectedItemId() == 3,
+                "Transactions belongs to Book");
+            findButton(relaunched.getWindow().getDecorView(), "Nhắc hạn").performClick();
+            check(
+                findNavigation(relaunched.getWindow().getDecorView()).getSelectedItemId() == 3,
+                "Reminders belongs to Book");
+            findButton(relaunched.getWindow().getDecorView(), "Nguồn tiền").performClick();
+            check(
+                findButton(relaunched.getWindow().getDecorView(), "Thêm nguồn tiền") != null,
+                "Book sections are mutually discoverable");
             findNavigation(relaunched.getWindow().getDecorView()).setSelectedItemId(4);
             check(
-                findButton(relaunched.getWindow().getDecorView(), "Sao lưu mã hóa") != null,
+                findButton(relaunched.getWindow().getDecorView(), "Giới thiệu  ›") != null,
                 "Settings renders");
+            check(
+                findEdit(relaunched.getWindow().getDecorView()) == null,
+                "Settings overview has no configuration fields");
+            check(
+                (relaunched.getWindow().getAttributes().flags
+                        & WindowManager.LayoutParams.FLAG_SECURE)
+                    == 0,
+                "Screen capture is enabled");
+            findButton(relaunched.getWindow().getDecorView(), "Giới thiệu  ›").performClick();
+            check(
+                findText(
+                    relaunched.getWindow().getDecorView(), "Phiên bản " + BuildConfig.VERSION_NAME),
+                "About shows installed version");
+            ((MainActivity) relaunched).getOnBackPressedDispatcher().onBackPressed();
+            findButton(relaunched.getWindow().getDecorView(), "Dữ liệu  ›").performClick();
+            check(
+                findButton(relaunched.getWindow().getDecorView(), "Sao lưu mã hóa  ›") != null,
+                "Data settings exposes encrypted backup");
+            ((MainActivity) relaunched).getOnBackPressedDispatcher().onBackPressed();
+            findButton(relaunched.getWindow().getDecorView(), "Kết nối AI  ›").performClick();
             EditText key = findLabeled(relaunched.getWindow().getDecorView(), "Key AI Studio"),
                 model = findLabeled(relaunched.getWindow().getDecorView(), "Model");
             check(key != null && model != null, "Labeled AI fields");
@@ -223,7 +255,7 @@ public class SmokeInstrumentation extends Instrumentation {
           "PASS: startup, chat proposal, confirmation boundary, encrypted persistence, backup,"
               + " wrong password, tamper rejection, navigation, relaunch, pasted key, saved model,"
               + " AI success, original API error, provider migration, bounded chat, retained ledger"
-              + " and proposal");
+              + " and proposal, settings hierarchy, About, screen capture, Book navigation");
       finish(Activity.RESULT_OK, result);
     } catch (Throwable failure) {
       java.io.StringWriter trace = new java.io.StringWriter();
@@ -231,6 +263,15 @@ public class SmokeInstrumentation extends Instrumentation {
       result.putString("stream", "FAIL: " + trace);
       finish(Activity.RESULT_CANCELED, result);
     }
+  }
+
+  private boolean findText(View view, String label) {
+    if (view instanceof TextView && ((TextView) view).getText().toString().equals(label))
+      return true;
+    if (view instanceof ViewGroup)
+      for (int i = 0; i < ((ViewGroup) view).getChildCount(); i++)
+        if (findText(((ViewGroup) view).getChildAt(i), label)) return true;
+    return false;
   }
 
   private Button findButton(View v, String label) {
