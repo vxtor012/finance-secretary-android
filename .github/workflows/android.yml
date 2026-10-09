@@ -100,10 +100,10 @@ jobs:
         run: chmod +x gradlew && ./gradlew assembleDebug assembleDebugAndroidTest
       - name: Android 35 integration smoke test
         run: |
-          sdkmanager 'emulator' 'system-images;android-35;default;x86_64'
+          sdkmanager 'emulator' 'system-images;android-35;google_apis;x86_64'
           export ANDROID_AVD_HOME="$RUNNER_TEMP/finance-avd"
           mkdir -p "$ANDROID_AVD_HOME"
-          echo no | avdmanager create avd --name finance-test --path "$ANDROID_AVD_HOME/finance-test.avd" --package 'system-images;android-35;default;x86_64' --force
+          echo no | avdmanager create avd --name finance-test --path "$ANDROID_AVD_HOME/finance-test.avd" --package 'system-images;android-35;google_apis;x86_64' --force
           test -f "$ANDROID_AVD_HOME/finance-test.ini"
           sudo chmod 666 /dev/kvm
           "$ANDROID_HOME/emulator/emulator" -avd finance-test -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot > /tmp/emulator.log 2>&1 &
@@ -119,6 +119,7 @@ jobs:
           adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
           adb shell pm grant vn.finance.secretary android.permission.POST_NOTIFICATIONS
           adb shell am instrument -w vn.finance.secretary.test/vn.finance.secretary.SmokeInstrumentation | tee device-test.txt
+          adb logcat -d > android-logcat.txt
           grep -q 'PASS: startup' device-test.txt
       - uses: actions/upload-artifact@v4
         if: always()
@@ -126,4 +127,5 @@ jobs:
           name: android-device-test
           path: |
             device-test.txt
+            android-logcat.txt
             /tmp/emulator.log
