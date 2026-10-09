@@ -1,4 +1,4 @@
-## v1.1.0
+## v1.1.1
 
 - Sửa chat OpenRouter: hiển thị lỗi cụ thể thay vì thông báo offline chung; xử lý câu trả lời hội thoại, JSON và phản hồi thiếu nội dung.
 - Key và model tự lưu khi thay đổi; thêm kiểm tra kết nối gọi đúng model được chọn. Gemma 4 26B A4B miễn phí là mặc định mới.

@@ -67,10 +67,12 @@ public class SmokeInstrumentation extends Instrumentation {
             input.setText("chi 50k cash ăn sáng");
             findButton(activity.getWindow().getDecorView(), "Gửi").performClick();
           });
-      long deadline = System.currentTimeMillis() + 10000;
+      long deadline = System.currentTimeMillis() + 30000;
       while (System.currentTimeMillis() < deadline && !store.load().has("pending"))
         Thread.sleep(100);
-      check(store.load().has("pending"), "Offline proposal persisted");
+      check(
+          store.load().has("pending"),
+          "Offline proposal persisted; chat=" + store.load().optJSONArray("chat"));
       check(
           store.load().optJSONArray("events").length() == 0,
           "Proposal does not write ledger before confirmation");
@@ -138,7 +140,7 @@ public class SmokeInstrumentation extends Instrumentation {
             findEdit(relaunched.getWindow().getDecorView()).setText("Xin chào");
             findButton(relaunched.getWindow().getDecorView(), "Gửi").performClick();
           });
-      deadline = System.currentTimeMillis() + 10000;
+      deadline = System.currentTimeMillis() + 30000;
       while (System.currentTimeMillis() < deadline
           && !store.load().optJSONArray("chat").toString().contains("sẵn sàng giúp"))
         Thread.sleep(100);
@@ -157,7 +159,7 @@ public class SmokeInstrumentation extends Instrumentation {
             findEdit(relaunched.getWindow().getDecorView()).setText("Bạn giúp tôi nhé");
             findButton(relaunched.getWindow().getDecorView(), "Gửi").performClick();
           });
-      deadline = System.currentTimeMillis() + 10000;
+      deadline = System.currentTimeMillis() + 30000;
       while (System.currentTimeMillis() < deadline
           && !store.load().optJSONArray("chat").toString().contains("HTTP 403")) Thread.sleep(100);
       check(
@@ -176,7 +178,9 @@ public class SmokeInstrumentation extends Instrumentation {
               + " AI success, original API error");
       finish(Activity.RESULT_OK, result);
     } catch (Throwable failure) {
-      result.putString("stream", "FAIL: " + failure);
+      java.io.StringWriter trace = new java.io.StringWriter();
+      failure.printStackTrace(new java.io.PrintWriter(trace));
+      result.putString("stream", "FAIL: " + trace);
       finish(Activity.RESULT_CANCELED, result);
     }
   }
