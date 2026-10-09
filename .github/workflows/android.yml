@@ -17,6 +17,9 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
       - uses: gradle/actions/setup-gradle@v4
       - run: chmod +x gradlew && ./gradlew testDebugUnitTest lintDebug assembleDebug
       - uses: actions/upload-artifact@v4
@@ -39,6 +42,9 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
       - uses: gradle/actions/setup-gradle@v4
       - name: Restore private signing key
         env:
@@ -71,6 +77,9 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
       - uses: gradle/actions/setup-gradle@v4
       - name: Build instrumented APKs
         run: chmod +x gradlew && ./gradlew assembleDebug assembleDebugAndroidTest
@@ -86,6 +95,8 @@ jobs:
             sleep 3
           done
           test "$(adb shell getprop sys.boot_completed | tr -d '\r')" = 1
+          sleep 15
+          adb shell input keyevent 82
           adb install -r app/build/outputs/apk/debug/app-debug.apk
           adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
           adb shell pm grant vn.finance.secretary android.permission.POST_NOTIFICATIONS
