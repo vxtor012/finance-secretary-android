@@ -2,7 +2,7 @@ plugins { id 'com.android.application' }
 android {
     namespace 'vn.finance.secretary'
     compileSdk 35
-    defaultConfig { applicationId 'vn.finance.secretary'; minSdk 26; targetSdk 35; versionCode 1; versionName '1.0.0'; testInstrumentationRunner 'vn.finance.secretary.SmokeInstrumentation' }
+    defaultConfig { applicationId 'vn.finance.secretary'; minSdk 26; targetSdk 35; versionCode 2; versionName '1.0.1'; testInstrumentationRunner 'vn.finance.secretary.SmokeInstrumentation' }
     compileOptions { coreLibraryDesugaringEnabled true; sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
     signingConfigs {
         release {

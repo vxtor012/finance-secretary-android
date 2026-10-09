@@ -7,9 +7,85 @@ import org.json.*;
 import org.junit.Test;
 
 public class LedgerTest {
-  @Test public void recurringPaymentsAdvanceWithoutDuplicates(){Ledger l=ledger();JSONObject r=Ledger.obj("id","rent","name","Rent","next",LocalDate.now().minusMonths(1).toString(),"period","month","day",LocalDate.now().getDayOfMonth(),"active",true);l.array("rules").put(r);JSONObject a=action("expense",1000000,"MB");Ledger.put(a,"ruleId","rent");Ledger.put(a,"occurrence",r.optString("next"));commit(l,a);assertEquals(LocalDate.now(),l.nextDue(r));try{commit(l,a);fail();}catch(IllegalArgumentException expected){}assertEquals(1,l.array("events").length());}
-  @Test public void undoCardPurchaseCannotOrphanPayment(){Ledger l=ledger();l.commit(new JSONArray().put(action("card_purchase",1000000,"Visa")),"purchase");JSONObject a=action("card_payment",1000000,"MB");Ledger.put(a,"to","Visa");commit(l,a);String before=l.data.toString();try{l.undo("purchase");fail();}catch(IllegalArgumentException expected){}assertEquals(before,l.data.toString());}
-  @Test public void debtCannotBeSettledBeforeLoan(){Ledger l=ledger();JSONObject lend=action("lend",1000000,"MB");Ledger.put(lend,"person","Nam");commit(l,lend);JSONObject collect=action("collect",100000,"MB");Ledger.put(collect,"debtId",l.array("events").optJSONObject(0).optString("id"));Ledger.put(collect,"date",LocalDate.now().minusDays(1).toString());try{commit(l,collect);fail();}catch(IllegalArgumentException expected){}assertEquals(1,l.array("events").length());}
+  @Test
+  public void fractionalFeeIsRejectedWithoutAnyPosting() {
+    Ledger l = ledger();
+    JSONObject a = action("transfer", 100000, "MB");
+    Ledger.put(a, "to", "MoMo");
+    Ledger.put(a, "fee", 1.5);
+    String before = l.data.toString();
+    try {
+      commit(l, a);
+      fail();
+    } catch (IllegalArgumentException expected) {
+    }
+    assertEquals(before, l.data.toString());
+  }
+
+  @Test
+  public void recurringPaymentsAdvanceWithoutDuplicates() {
+    Ledger l = ledger();
+    JSONObject r =
+        Ledger.obj(
+            "id",
+            "rent",
+            "name",
+            "Rent",
+            "next",
+            LocalDate.now().minusMonths(1).toString(),
+            "period",
+            "month",
+            "day",
+            LocalDate.now().getDayOfMonth(),
+            "active",
+            true);
+    l.array("rules").put(r);
+    JSONObject a = action("expense", 1000000, "MB");
+    Ledger.put(a, "ruleId", "rent");
+    Ledger.put(a, "occurrence", r.optString("next"));
+    commit(l, a);
+    assertEquals(LocalDate.now(), l.nextDue(r));
+    try {
+      commit(l, a);
+      fail();
+    } catch (IllegalArgumentException expected) {
+    }
+    assertEquals(1, l.array("events").length());
+  }
+
+  @Test
+  public void undoCardPurchaseCannotOrphanPayment() {
+    Ledger l = ledger();
+    l.commit(new JSONArray().put(action("card_purchase", 1000000, "Visa")), "purchase");
+    JSONObject a = action("card_payment", 1000000, "MB");
+    Ledger.put(a, "to", "Visa");
+    commit(l, a);
+    String before = l.data.toString();
+    try {
+      l.undo("purchase");
+      fail();
+    } catch (IllegalArgumentException expected) {
+    }
+    assertEquals(before, l.data.toString());
+  }
+
+  @Test
+  public void debtCannotBeSettledBeforeLoan() {
+    Ledger l = ledger();
+    JSONObject lend = action("lend", 1000000, "MB");
+    Ledger.put(lend, "person", "Nam");
+    commit(l, lend);
+    JSONObject collect = action("collect", 100000, "MB");
+    Ledger.put(collect, "debtId", l.array("events").optJSONObject(0).optString("id"));
+    Ledger.put(collect, "date", LocalDate.now().minusDays(1).toString());
+    try {
+      commit(l, collect);
+      fail();
+    } catch (IllegalArgumentException expected) {
+    }
+    assertEquals(1, l.array("events").length());
+  }
+
   private Ledger ledger() {
     Ledger l = new Ledger();
     l.addAccount("MB", "bank", "mb");

@@ -269,6 +269,15 @@ public final class Ledger {
     }
     if (amount <= 0 || amount > 1_000_000_000_000L)
       throw new IllegalArgumentException("Số tiền ngoài phạm vi");
+    long fee = 0;
+    if (source.has("fee")) {
+      try {
+        fee = new java.math.BigDecimal(source.opt("fee").toString()).longValueExact();
+      } catch (Exception ex) {
+        throw new IllegalArgumentException("Phí phải là số nguyên VND");
+      }
+    }
+    if (fee < 0 || fee > 1_000_000_000L) throw new IllegalArgumentException("Phí không hợp lệ");
     JSONObject a = account(source.optString("account"));
     String aid = a.optString("id"), id = UUID.randomUUID().toString();
     JSONObject effects = new JSONObject();
@@ -298,9 +307,6 @@ public final class Ledger {
             throw new IllegalArgumentException("Đích phải là thẻ");
           if (t.equals("transfer") && b.optString("type").equals("card"))
             throw new IllegalArgumentException("Trả thẻ dùng card_payment");
-          long fee = source.optLong("fee", 0);
-          if (fee < 0 || fee > 1_000_000_000L)
-            throw new IllegalArgumentException("Phí không hợp lệ");
           if (t.equals("card_payment") && amount > Math.max(0, balance(bid)))
             throw new IllegalArgumentException("Khoản trả vượt nợ thẻ đang theo dõi");
           put(effects, aid, -Math.addExact(amount, fee));
@@ -366,7 +372,7 @@ public final class Ledger {
             "amount",
             amount,
             "fee",
-            source.optLong("fee"),
+            fee,
             "income",
             income,
             "expense",
