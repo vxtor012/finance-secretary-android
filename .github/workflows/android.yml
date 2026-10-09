@@ -101,12 +101,16 @@ jobs:
       - name: Android 35 integration smoke test
         run: |
           sdkmanager 'emulator' 'system-images;android-35;google_apis;x86_64'
+          # Pin the host emulator independently of the Android 35 system image.
+          curl --fail --location --retry 3 https://dl.google.com/android/repository/emulator-linux_x64-14214601.zip -o "$RUNNER_TEMP/emulator.zip"
+          echo "55e7ce272dd27413855c81b4629c107a1553d07a2f77fa55a6049fdca22f4221  $RUNNER_TEMP/emulator.zip" | sha256sum --check
+          unzip -q "$RUNNER_TEMP/emulator.zip" -d "$RUNNER_TEMP/pinned-emulator"
           export ANDROID_AVD_HOME="$RUNNER_TEMP/finance-avd"
           mkdir -p "$ANDROID_AVD_HOME"
           echo no | avdmanager create avd --name finance-test --path "$ANDROID_AVD_HOME/finance-test.avd" --package 'system-images;android-35;google_apis;x86_64' --force
           test -f "$ANDROID_AVD_HOME/finance-test.ini"
           sudo chmod 666 /dev/kvm
-          "$ANDROID_HOME/emulator/emulator" -avd finance-test -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot > /tmp/emulator.log 2>&1 &
+          "$RUNNER_TEMP/pinned-emulator/emulator/emulator" -avd finance-test -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot > /tmp/emulator.log 2>&1 &
           timeout 120 adb wait-for-device || { cat /tmp/emulator.log; exit 1; }
           for i in $(seq 1 120); do
             if [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = 1 ]; then break; fi
