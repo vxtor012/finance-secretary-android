@@ -25,6 +25,13 @@ public class SmokeInstrumentation extends Instrumentation {
   public void onStart() {
     Bundle result = new Bundle();
     try {
+      check(
+          getTargetContext()
+              .getApplicationInfo()
+              .loadLabel(getTargetContext().getPackageManager())
+              .toString()
+              .equals("Thư ký tài chính"),
+          "Installed application label is valid Vietnamese");
       SecureStore store = new SecureStore(getTargetContext());
       Ledger ledger = new Ledger();
       Ledger.put(ledger.data, "onboarded", true);

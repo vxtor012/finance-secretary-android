@@ -1,3 +1,11 @@
+## v1.3.1
+
+- Sửa tên app bị lỗi mã hóa tiếng Việt trong trình cài đặt và launcher.
+- Nền icon xanh sáng hơn.
+- Kiểm thử nhãn ứng dụng đã cài để ngăn lỗi mã hóa tái diễn.
+
+Cài đè lên bản cũ để giữ dữ liệu.
+
 ## v1.3.0
 
 - Cho phép chụp/quay màn hình và thay icon app bằng hình sổ tối giản, hỗ trợ icon thích ứng và theo màu hệ thống.
