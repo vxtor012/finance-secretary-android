@@ -44,8 +44,9 @@ public class ReminderReceiver extends BroadcastReceiver {
                 boolean due = false;
                 for (int i = 0; i < ledger.array("rules").length(); i++) {
                   JSONObject r = ledger.array("rules").optJSONObject(i);
-                  if (r.optBoolean("active", true) && !ledger.nextDue(r).isAfter(now.plusDays(3)))
-                    due = true;
+                  if (!r.optBoolean("deleted")
+                      && r.optBoolean("active", true)
+                      && !ledger.nextDue(r).isAfter(now.plusDays(3))) due = true;
                 }
                 for (int i = 0; i < ledger.array("events").length(); i++) {
                   JSONObject e = ledger.array("events").optJSONObject(i);

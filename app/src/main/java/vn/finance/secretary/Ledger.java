@@ -487,7 +487,8 @@ public final class Ledger {
         JSONObject r = array("rules").optJSONObject(i);
         if (r.optString("id").equals(e.optString("ruleId"))) {
           found = true;
-          if (!r.optBoolean("active", true)
+          if (r.optBoolean("deleted")
+              || !r.optBoolean("active", true)
               || !nextDue(r).toString().equals(e.optString("occurrence")))
             throw new IllegalArgumentException("Kỳ nghĩa vụ không khớp hoặc đã tạm dừng");
         }
@@ -599,6 +600,26 @@ public final class Ledger {
     return next;
   }
 
+  /** Retain rule identity for historical payments, but remove it from tracking. */
+  public void deleteRule(String id) {
+    for (int i = 0; i < array("rules").length(); i++) {
+      JSONObject rule = array("rules").optJSONObject(i);
+      if (!id.equals(rule.optString("id")) || rule.optBoolean("deleted")) continue;
+      JSONObject pending = data.optJSONObject("pending");
+      JSONArray actions = pending == null ? null : pending.optJSONArray("actions");
+      if (actions != null)
+        for (int j = 0; j < actions.length(); j++)
+          if (id.equals(actions.optJSONObject(j).optString("ruleId")))
+            throw new IllegalArgumentException(
+                "Hãy xử lý đề xuất thanh toán đang chờ trước khi xóa.");
+      put(rule, "active", false);
+      put(rule, "deleted", true);
+      array("audit").put(obj("action", "delete_rule", "id", id, "at", Instant.now().toString()));
+      return;
+    }
+    throw new IllegalArgumentException("Nhắc hạn không tồn tại hoặc đã xóa.");
+  }
+
   private boolean isPaid(String rule, String occurrence) {
     for (int i = 0; i < array("events").length(); i++) {
       JSONObject e = array("events").optJSONObject(i);
@@ -613,7 +634,7 @@ public final class Ledger {
     StringBuilder out = new StringBuilder();
     for (int i = 0; i < array("rules").length(); i++) {
       JSONObject r = array("rules").optJSONObject(i);
-      if (!r.optBoolean("active", true)) continue;
+      if (r.optBoolean("deleted") || !r.optBoolean("active", true)) continue;
       out.append(r.optString("name"))
           .append(" · ")
           .append(money(r.optLong("amount")))

@@ -39,6 +39,10 @@ public class MainActivity extends AppCompatActivity {
   private boolean busy = false, settingsDetail = false;
   private String backupPassword = "";
   private byte[] exportBytes;
+  private int historyPage = 0;
+  private LocalDate historyStart, historyEnd;
+  private String historyAccount = "", historyType = "", historyPeriod = "Tất cả";
+  private boolean historyIncludeUndone = true;
 
   @Override
   public void onCreate(Bundle b) {
@@ -196,6 +200,7 @@ public class MainActivity extends AppCompatActivity {
     if (toolbar != null) {
       toolbar.setTitle(destination == 3 ? "Sổ" : name.equals("Chat") ? "Sổ của bạn" : name);
       toolbar.setSubtitle(null);
+      toolbar.setVisibility(destination == 3 && shortViewport() ? View.GONE : View.VISIBLE);
       toolbar.setNavigationIcon(null);
       navigation.getMenu().findItem(destination).setChecked(true);
     }
@@ -1253,6 +1258,7 @@ public class MainActivity extends AppCompatActivity {
   }
 
   private void undo(String id) {
+    boolean fromHistory = currentScreen.equals("Giao dịch");
     new MaterialAlertDialogBuilder(this)
         .setTitle("Hoàn tác cả nhóm giao dịch?")
         .setMessage(id + "\nDấu vết được giữ trong nhật ký.")
@@ -1266,7 +1272,8 @@ public class MainActivity extends AppCompatActivity {
                       ledger.undo(id);
                       chat("assistant", "Đã hoàn tác nhóm " + id);
                     });
-                showChat();
+                if (fromHistory) history();
+                else showChat();
               } catch (Exception e) {
                 error(e);
               }
@@ -1274,58 +1281,390 @@ public class MainActivity extends AppCompatActivity {
         .show();
   }
 
+  private TextView compactText(String value, int size, boolean secondary) {
+    TextView view = text(value, size);
+    view.setPadding(0, 0, 0, 0);
+    view.setTextIsSelectable(false);
+    if (secondary)
+      view.setTextColor(color(com.google.android.material.R.attr.colorOnSurfaceVariant));
+    view.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+    return view;
+  }
+
+  private void listRow(
+      LinearLayout parent, String title, String subtitle, String amount, Runnable action) {
+    LinearLayout row = new LinearLayout(this);
+    boolean stacked = getResources().getConfiguration().fontScale > 1.3f;
+    row.setOrientation(stacked ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL);
+    row.setGravity(Gravity.CENTER_VERTICAL);
+    row.setPadding(dp(8), dp(12), dp(8), dp(12));
+    row.setMinimumHeight(dp(72));
+    LinearLayout labels = new LinearLayout(this);
+    labels.setOrientation(LinearLayout.VERTICAL);
+    TextView heading = compactText(title, 16, false);
+    heading.setTypeface(null, android.graphics.Typeface.BOLD);
+    heading.setMaxLines(1);
+    heading.setEllipsize(android.text.TextUtils.TruncateAt.END);
+    TextView supporting = compactText(subtitle, 13, true);
+    supporting.setMaxLines(2);
+    supporting.setEllipsize(android.text.TextUtils.TruncateAt.END);
+    labels.addView(heading, new LinearLayout.LayoutParams(-1, -2));
+    labels.addView(supporting, new LinearLayout.LayoutParams(-1, -2));
+    row.addView(
+        labels,
+        stacked ? new LinearLayout.LayoutParams(-1, -2) : new LinearLayout.LayoutParams(0, -2, 1));
+    TextView value = compactText(amount, 16, false);
+    value.setTypeface(null, android.graphics.Typeface.BOLD);
+    if (!stacked) value.setPadding(dp(12), 0, 0, 0);
+    row.addView(value, new LinearLayout.LayoutParams(-2, -2));
+    if (!stacked) {
+      ImageView more = new ImageView(this);
+      more.setImageResource(R.drawable.ic_more_vert);
+      more.setImageTintList(
+          android.content.res.ColorStateList.valueOf(
+              color(com.google.android.material.R.attr.colorOnSurfaceVariant)));
+      more.setPadding(dp(8), 0, 0, 0);
+      more.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+      row.addView(more, new LinearLayout.LayoutParams(dp(28), dp(20)));
+    }
+    android.util.TypedValue background = new android.util.TypedValue();
+    getTheme().resolveAttribute(android.R.attr.selectableItemBackground, background, true);
+    row.setBackgroundResource(background.resourceId);
+    row.setFocusable(true);
+    row.setClickable(true);
+    row.setContentDescription(title + ", " + subtitle + ", " + amount + ". Mở chi tiết");
+    ViewCompat.setAccessibilityDelegate(
+        row,
+        new androidx.core.view.AccessibilityDelegateCompat() {
+          @Override
+          public void onInitializeAccessibilityNodeInfo(
+              View host, androidx.core.view.accessibility.AccessibilityNodeInfoCompat info) {
+            super.onInitializeAccessibilityNodeInfo(host, info);
+            info.setClassName(Button.class.getName());
+          }
+        });
+    row.setOnClickListener(
+        v -> {
+          try {
+            action.run();
+          } catch (Exception e) {
+            error(e);
+          }
+        });
+    parent.addView(row, new LinearLayout.LayoutParams(-1, -2));
+    View divider = new View(this);
+    divider.setBackgroundColor(color(com.google.android.material.R.attr.colorOutlineVariant));
+    parent.addView(divider, new LinearLayout.LayoutParams(-1, dp(1)));
+  }
+
+  private String accountLabel(String id) {
+    if (id.isEmpty()) return "";
+    try {
+      return ledger.account(id).optString("name");
+    } catch (Exception ignored) {
+      return id;
+    }
+  }
+
+  private String dateLabel(String date) {
+    LocalDate value = LocalDate.parse(date);
+    String label = value.format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy"));
+    if (value.equals(LocalDate.now())) return "Hôm nay · " + label;
+    if (value.equals(LocalDate.now().minusDays(1))) return "Hôm qua · " + label;
+    return label;
+  }
+
+  private boolean shortViewport() {
+    return getResources().getConfiguration().screenHeightDp < 480;
+  }
+
+  @Override
+  public void onConfigurationChanged(android.content.res.Configuration config) {
+    super.onConfigurationChanged(config);
+    if (body == null) return;
+    ViewGroup.LayoutParams size = body.getLayoutParams();
+    size.width = Math.min(getResources().getDisplayMetrics().widthPixels, dp(640));
+    body.setLayoutParams(size);
+    if (currentScreen.equals("Giao dịch")) history();
+    else if (currentScreen.equals("Nhắc hạn")) rules();
+  }
+
   private void history() {
     screen("Giao dịch", 3);
     body.removeAllViews();
+    List<List<JSONObject>> pages =
+        TransactionHistory.pages(
+            ledger.array("events"),
+            historyStart,
+            historyEnd,
+            historyAccount,
+            historyType,
+            historyIncludeUndone);
+    historyPage = Math.max(0, Math.min(historyPage, pages.size() - 1));
+    LinearLayout controls = new LinearLayout(this);
+    controls.setGravity(Gravity.CENTER_VERTICAL);
+    controls.setPadding(dp(16), 0, dp(16), 0);
+    String filter = historyPeriod;
+    if (historyStart != null && historyPeriod.equals("Tùy chọn"))
+      filter = dateLabel(historyStart.toString()) + " – " + dateLabel(historyEnd.toString());
+    if (!historyAccount.isEmpty()) filter += " · " + accountLabel(historyAccount);
+    if (!historyType.isEmpty()) filter += " · " + Ledger.typeLabel(historyType);
+    if (!historyIncludeUndone) filter += " · Chưa hoàn tác";
+    Button filters = button("Bộ lọc", this::historyFilters);
+    controls.addView(filters, new LinearLayout.LayoutParams(-2, -2));
+    TextView summary = text(filter, 13);
+    summary.setTextColor(color(com.google.android.material.R.attr.colorOnSurfaceVariant));
+    summary.setMaxLines(2);
+    summary.setEllipsize(android.text.TextUtils.TruncateAt.END);
+    controls.addView(summary, new LinearLayout.LayoutParams(0, -2, 1));
+    if (!shortViewport()) body.addView(controls);
     ScrollView scroll = new ScrollView(this);
-    LinearLayout f = form();
-    scroll.addView(f);
-    body.addView(scroll);
-    if (ledger.array("events").length() == 0)
-      f.addView(
-          text("Chưa có giao dịch. Ghi bằng Chat hoặc Ghi nhanh, rồi xác nhận để lưu vào sổ.", 15));
-    for (int i = ledger.array("events").length() - 1; i >= 0; i--) {
-      JSONObject e = ledger.array("events").optJSONObject(i);
-      f.addView(
+    LinearLayout list = form();
+    list.setPadding(dp(16), 0, dp(16), dp(8));
+    scroll.addView(list);
+    body.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
+    if (pages.isEmpty()) {
+      list.addView(
           text(
-              Ledger.typeLabel(e.optString("type")) + " · " + Ledger.money(e.optLong("amount")),
-              18));
-      String source;
-      try {
-        source = ledger.account(e.optString("account")).optString("name");
-      } catch (Exception ignored) {
-        source = "";
+              ledger.array("events").length() == 0
+                  ? "Chưa có giao dịch. Ghi bằng Chat hoặc Ghi nhanh, rồi xác nhận để lưu vào sổ."
+                  : "Không có giao dịch khớp bộ lọc. Thử đổi khoảng ngày hoặc nguồn tiền.",
+              15));
+    } else {
+      String day = "";
+      for (JSONObject event : pages.get(historyPage)) {
+        if (!day.equals(event.optString("date"))) {
+          day = event.optString("date");
+          String continuation =
+              historyPage > 0
+                      && pages
+                          .get(historyPage - 1)
+                          .get(pages.get(historyPage - 1).size() - 1)
+                          .optString("date")
+                          .equals(day)
+                  ? " · tiếp"
+                  : "";
+          TextView heading = text(dateLabel(day) + continuation, 14);
+          heading.setTypeface(null, android.graphics.Typeface.BOLD);
+          list.addView(heading);
+        }
+        String title =
+            event.optString("note").isBlank()
+                ? Ledger.typeLabel(event.optString("type"))
+                : event.optString("note");
+        String detail =
+            Ledger.typeLabel(event.optString("type"))
+                + " · "
+                + accountLabel(event.optString("account"));
+        if (!event.optString("to").isEmpty()) detail += " → " + accountLabel(event.optString("to"));
+        if (!event.optBoolean("active", true)) detail += " · Đã hoàn tác";
+        listRow(
+            list,
+            title,
+            detail,
+            Ledger.money(event.optLong("amount")),
+            () -> transactionDetails(event));
       }
-      String description = e.optString("date") + " · " + source + "\n" + e.optString("note");
-      if (e.optLong("income") != 0 || e.optLong("expense") != 0)
-        description += " · " + e.optString("category").replace("/", " / ");
-      if (!e.optBoolean("active", true)) description += "\nĐã hoàn tác";
-      f.addView(text(description, 14));
-      f.addView(
-          button(
-              "Chi tiết giao dịch",
-              () -> {
-                LinearLayout details = form();
-                details.addView(
-                    text(
-                        "Ngày: "
-                            + e.optString("date")
-                            + "\nNghiệp vụ: "
-                            + Ledger.typeLabel(e.optString("type"))
-                            + "\nSố tiền: "
-                            + Ledger.money(e.optLong("amount"))
-                            + "\nNội dung: "
-                            + e.optString("note")
-                            + "\nDanh mục: "
-                            + e.optString("category")
-                            + "\nMã giao dịch: "
-                            + e.optString("id"),
-                        14));
-                dialog("Giao dịch", details, "Đóng", () -> {});
-              }));
-      if (e.optBoolean("active", true))
-        f.addView(button("Hoàn tác nhóm", () -> undo(e.optString("requestId"))));
     }
+    LinearLayout pager = new LinearLayout(this);
+    pager.setPadding(dp(8), 0, dp(8), 0);
+    pager.setGravity(Gravity.CENTER_VERTICAL);
+    if (shortViewport()) {
+      controls.removeView(filters);
+      filters.setContentDescription("Bộ lọc: " + filter);
+      pager.addView(filters, new LinearLayout.LayoutParams(-2, -2));
+    }
+    Button previous =
+        button(
+            "Trước",
+            () -> {
+              historyPage--;
+              history();
+            });
+    previous.setEnabled(historyPage > 0);
+    Button next =
+        button(
+            "Sau",
+            () -> {
+              historyPage++;
+              history();
+            });
+    next.setEnabled(historyPage + 1 < pages.size());
+    pager.addView(previous, new LinearLayout.LayoutParams(-2, -2));
+    int total = pages.stream().mapToInt(List::size).sum();
+    TextView position =
+        text(
+            "Trang "
+                + (pages.isEmpty() ? 0 : historyPage + 1)
+                + "/"
+                + pages.size()
+                + "\n"
+                + total
+                + " giao dịch",
+            13);
+    position.setGravity(Gravity.CENTER);
+    pager.addView(position, new LinearLayout.LayoutParams(0, -2, 1));
+    pager.addView(next, new LinearLayout.LayoutParams(-2, -2));
+    body.addView(pager);
+  }
+
+  private void transactionDetails(JSONObject event) {
+    LinearLayout details = form();
+    details.addView(
+        text(
+            "Ngày: "
+                + dateLabel(event.optString("date"))
+                + "\nNghiệp vụ: "
+                + Ledger.typeLabel(event.optString("type"))
+                + "\nSố tiền: "
+                + Ledger.money(event.optLong("amount"))
+                + "\nNguồn: "
+                + accountLabel(event.optString("account"))
+                + (event.optString("to").isEmpty()
+                    ? ""
+                    : "\nĐích: " + accountLabel(event.optString("to")))
+                + "\nPhí: "
+                + Ledger.money(event.optLong("fee"))
+                + "\nNội dung: "
+                + event.optString("note")
+                + "\nDanh mục: "
+                + event.optString("category")
+                + (event.optString("debtId").isEmpty()
+                    ? ""
+                    : "\nKhoản nợ: " + event.optString("debtId"))
+                + "\nTrạng thái: "
+                + (event.optBoolean("active", true) ? "Đã ghi" : "Đã hoàn tác")
+                + "\nMã giao dịch: "
+                + event.optString("id"),
+            15));
+    ScrollView scroll = new ScrollView(this);
+    scroll.addView(details);
+    MaterialAlertDialogBuilder builder =
+        new MaterialAlertDialogBuilder(this)
+            .setTitle("Chi tiết giao dịch")
+            .setView(scroll)
+            .setNegativeButton("Đóng", null);
+    if (event.optBoolean("active", true))
+      builder.setPositiveButton("Hoàn tác nhóm", (d, w) -> undo(event.optString("requestId")));
+    builder.show();
+  }
+
+  private EditText dateFilterField(String label, LocalDate initial) {
+    EditText field = field(label, initial.toString());
+    field.setFocusable(false);
+    field.setOnClickListener(
+        v -> {
+          LocalDate selected = LocalDate.parse(field.getText().toString());
+          new DatePickerDialog(
+                  this,
+                  (picker, year, month, day) ->
+                      field.setText(LocalDate.of(year, month + 1, day).toString()),
+                  selected.getYear(),
+                  selected.getMonthValue() - 1,
+                  selected.getDayOfMonth())
+              .show();
+        });
+    return field;
+  }
+
+  private void historyFilters() {
+    LinearLayout content = form();
+    List<String> periods = List.of("Tất cả", "Hôm nay", "7 ngày qua", "Tháng này", "Tùy chọn");
+    Spinner period = spinner(content, "Khoảng thời gian", periods);
+    period.setSelection(periods.indexOf(historyPeriod));
+    LinearLayout custom = form();
+    EditText from =
+        dateFilterField("Từ ngày", historyStart == null ? LocalDate.now() : historyStart);
+    EditText until = dateFilterField("Đến ngày", historyEnd == null ? LocalDate.now() : historyEnd);
+    custom.addView(from);
+    custom.addView(until);
+    content.addView(custom);
+    period.setOnItemSelectedListener(
+        new AdapterView.OnItemSelectedListener() {
+          public void onItemSelected(AdapterView<?> parent, View v, int position, long id) {
+            custom.setVisibility(position == 4 ? View.VISIBLE : View.GONE);
+          }
+
+          public void onNothingSelected(AdapterView<?> parent) {}
+        });
+    List<String> accountIds = new ArrayList<>(List.of(""));
+    List<String> accountNames = new ArrayList<>(List.of("Tất cả nguồn tiền"));
+    for (int i = 0; i < ledger.array("accounts").length(); i++) {
+      JSONObject account = ledger.array("accounts").optJSONObject(i);
+      accountIds.add(account.optString("id"));
+      accountNames.add(
+          account.optString("name") + (account.optBoolean("archived") ? " (ngừng dùng)" : ""));
+    }
+    Spinner account = spinner(content, "Nguồn tiền", accountNames);
+    account.setSelection(Math.max(0, accountIds.indexOf(historyAccount)));
+    List<String> types =
+        List.of(
+            "",
+            "expense",
+            "income",
+            "transfer",
+            "lend",
+            "borrow",
+            "collect",
+            "repay",
+            "card_purchase",
+            "card_payment",
+            "card_refund");
+    List<String> names = new ArrayList<>();
+    for (String type : types)
+      names.add(type.isEmpty() ? "Tất cả nghiệp vụ" : Ledger.typeLabel(type));
+    Spinner type = spinner(content, "Nghiệp vụ", names);
+    type.setSelection(Math.max(0, types.indexOf(historyType)));
+    CheckBox undone = new CheckBox(this);
+    undone.setText("Hiện cả giao dịch đã hoàn tác");
+    undone.setChecked(historyIncludeUndone);
+    content.addView(undone);
+    content.addView(
+        button(
+            "Xóa bộ lọc",
+            () -> {
+              period.setSelection(0);
+              account.setSelection(0);
+              type.setSelection(0);
+              undone.setChecked(true);
+            }));
+    dialog(
+        "Lọc giao dịch",
+        content,
+        "Áp dụng",
+        () -> {
+          String chosen = period.getSelectedItem().toString();
+          LocalDate start = null, end = null, now = LocalDate.now();
+          switch (chosen) {
+            case "Hôm nay":
+              start = now;
+              end = now;
+              break;
+            case "7 ngày qua":
+              start = now.minusDays(6);
+              end = now;
+              break;
+            case "Tháng này":
+              start = now.withDayOfMonth(1);
+              end = now;
+              break;
+            case "Tùy chọn":
+              start = LocalDate.parse(from.getText().toString());
+              end = LocalDate.parse(until.getText().toString());
+              if (start.isAfter(end))
+                throw new IllegalArgumentException(
+                    "Ngày bắt đầu phải trước hoặc bằng ngày kết thúc.");
+              break;
+          }
+          historyPeriod = chosen;
+          historyStart = start;
+          historyEnd = end;
+          historyAccount = accountIds.get(account.getSelectedItemPosition());
+          historyType = types.get(type.getSelectedItemPosition());
+          historyIncludeUndone = undone.isChecked();
+          historyPage = 0;
+          history();
+        });
   }
 
   private void reportDialog() {
@@ -1441,44 +1780,82 @@ public class MainActivity extends AppCompatActivity {
     LinearLayout f = form();
     scroll.addView(f);
     body.addView(scroll);
-    String obligations = ledger.obligations();
-    f.addView(
-        text(
-            obligations.isBlank()
-                ? "Chưa có khoản cần theo dõi. Thêm khoản định kỳ hoặc ghi công nợ bằng Chat / Ghi"
-                      + " nhanh."
-                : obligations,
-            15));
+    List<JSONObject> reminders = new ArrayList<>();
     for (int i = 0; i < ledger.array("rules").length(); i++) {
-      JSONObject r = ledger.array("rules").optJSONObject(i);
-      f.addView(
-          text(
-              r.optString("name")
-                  + " · "
-                  + (r.optBoolean("active", true) ? "Đang theo dõi" : "Tạm dừng"),
-              15));
-      if (r.optBoolean("active", true))
-        f.addView(button("Xác nhận thanh toán " + r.optString("name"), () -> quickEntry(r)));
-      f.addView(
-          button(
-              r.optBoolean("active", true) ? "Tạm dừng / hủy" : "Kích hoạt lại",
-              () -> {
-                mutate(
-                    () -> {
-                      Ledger.put(r, "active", !r.optBoolean("active", true));
-                      ledger
-                          .array("audit")
-                          .put(
-                              Ledger.obj(
-                                  "action",
-                                  "toggle_rule",
-                                  "id",
-                                  r.optString("id"),
-                                  "at",
-                                  java.time.Instant.now().toString()));
-                    });
-                rules();
-              }));
+      JSONObject rule = ledger.array("rules").optJSONObject(i);
+      if (!rule.optBoolean("deleted")) reminders.add(rule);
+    }
+    reminders.sort(
+        Comparator.comparing((JSONObject r) -> !r.optBoolean("active", true))
+            .thenComparing(r -> ledger.nextDue(r)));
+    f.addView(text("Nghĩa vụ định kỳ · " + reminders.size(), 14));
+    if (reminders.isEmpty())
+      f.addView(text("Chưa có nhắc định kỳ. Thêm khoản cần theo dõi bên dưới.", 14));
+    for (JSONObject rule : reminders) {
+      boolean active = rule.optBoolean("active", true);
+      String period =
+          switch (rule.optString("period")) {
+            case "week" -> "Hàng tuần";
+            case "year" -> "Hàng năm";
+            default -> "Hàng tháng";
+          };
+      LocalDate due = ledger.nextDue(rule);
+      String status =
+          !active
+              ? "Tạm dừng"
+              : due.isBefore(LocalDate.now())
+                  ? "Quá hạn"
+                  : due.equals(LocalDate.now()) ? "Hôm nay" : period;
+      String dueText = due.format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy"));
+      listRow(
+          f,
+          rule.optString("name"),
+          "Hạn " + dueText + "\n" + status,
+          Ledger.money(rule.optLong("amount")),
+          () -> reminderActions(rule));
+    }
+    List<JSONObject> debts = new ArrayList<>();
+    for (int i = 0; i < ledger.array("events").length(); i++) {
+      JSONObject event = ledger.array("events").optJSONObject(i);
+      if (event.optBoolean("active", true)
+          && List.of("lend", "borrow").contains(event.optString("type"))
+          && ledger.debt(event.optString("id")) > 0) debts.add(event);
+    }
+    debts.sort(
+        Comparator.comparing(
+            e -> e.optString("due").isEmpty() ? "9999-12-31" : e.optString("due")));
+    if (!debts.isEmpty()) f.addView(text("Công nợ còn lại · " + debts.size(), 14));
+    for (JSONObject debt : debts) {
+      String due = debt.optString("due");
+      String label = debt.optString("type").equals("lend") ? "Phải thu" : "Phải trả";
+      String status =
+          due.isEmpty()
+              ? "Không có hạn"
+              : "Hạn "
+                  + dateLabel(due)
+                  + (LocalDate.parse(due).isBefore(LocalDate.now()) ? " · Quá hạn" : "");
+      listRow(
+          f,
+          debt.optString("person"),
+          label + " · " + status,
+          Ledger.money(ledger.debt(debt.optString("id"))),
+          () -> {
+            LinearLayout detail = form();
+            detail.addView(
+                text(
+                    label
+                        + " · "
+                        + debt.optString("person")
+                        + "\nCòn lại: "
+                        + Ledger.money(ledger.debt(debt.optString("id")))
+                        + "\n"
+                        + status
+                        + "\nMã khoản nợ gốc: "
+                        + debt.optString("id")
+                        + "\nDùng mã này khi thu hoặc trả nợ trong Chat / Ghi nhanh.",
+                    15));
+            dialog("Chi tiết công nợ", detail, "Đã hiểu", () -> {});
+          });
     }
     f.addView(
         button(
@@ -1529,6 +1906,92 @@ public class MainActivity extends AppCompatActivity {
                     rules();
                   });
             }));
+  }
+
+  private void reminderActions(JSONObject rule) {
+    boolean active = rule.optBoolean("active", true);
+    List<String> actions = new ArrayList<>();
+    actions.add("Chi tiết nhắc hạn");
+    if (active) actions.add("Xác nhận thanh toán");
+    actions.add(active ? "Tạm dừng" : "Kích hoạt lại");
+    actions.add("Xóa nhắc hạn");
+    new MaterialAlertDialogBuilder(this)
+        .setTitle(rule.optString("name") + " · " + Ledger.money(rule.optLong("amount")))
+        .setItems(
+            actions.toArray(new String[0]),
+            (dialog, index) -> {
+              try {
+                switch (actions.get(index)) {
+                  case "Chi tiết nhắc hạn":
+                    LinearLayout details = form();
+                    String period =
+                        switch (rule.optString("period")) {
+                          case "week" -> "Hàng tuần";
+                          case "year" -> "Hàng năm";
+                          default -> "Hàng tháng";
+                        };
+                    details.addView(
+                        text(
+                            rule.optString("name")
+                                + "\nSố tiền: "
+                                + Ledger.money(rule.optLong("amount"))
+                                + (rule.optBoolean("estimated") ? " (ước tính)" : "")
+                                + "\nChu kỳ: "
+                                + period
+                                + "\nHạn kế tiếp: "
+                                + dateLabel(ledger.nextDue(rule).toString())
+                                + "\nTrạng thái: "
+                                + (active ? "Đang theo dõi" : "Tạm dừng"),
+                            15));
+                    dialog("Chi tiết nhắc hạn", details, "Đã hiểu", () -> {});
+                    break;
+                  case "Xác nhận thanh toán":
+                    quickEntry(rule);
+                    break;
+                  case "Xóa nhắc hạn":
+                    new MaterialAlertDialogBuilder(this)
+                        .setTitle("Xóa nhắc hạn này?")
+                        .setMessage(
+                            rule.optString("name")
+                                + "\n"
+                                + "Ngừng nhắc và xóa khỏi danh sách. Giao dịch đã thanh toán vẫn"
+                                + " được giữ. Thao tác này không thể hoàn tác.")
+                        .setNegativeButton("Hủy", null)
+                        .setPositiveButton(
+                            "Xóa",
+                            (d, w) -> {
+                              try {
+                                mutate(() -> ledger.deleteRule(rule.optString("id")));
+                                rules();
+                              } catch (Exception e) {
+                                error(e);
+                              }
+                            })
+                        .show();
+                    break;
+                  default:
+                    mutate(
+                        () -> {
+                          Ledger.put(rule, "active", !active);
+                          ledger
+                              .array("audit")
+                              .put(
+                                  Ledger.obj(
+                                      "action",
+                                      "toggle_rule",
+                                      "id",
+                                      rule.optString("id"),
+                                      "at",
+                                      java.time.Instant.now().toString()));
+                        });
+                    rules();
+                }
+              } catch (Exception e) {
+                error(e);
+              }
+            })
+        .setNegativeButton("Đóng", null)
+        .show();
   }
 
   private void aiSettings() {
@@ -1688,6 +2151,7 @@ public class MainActivity extends AppCompatActivity {
 
   private void settingsBack() {
     toolbar.setNavigationIcon(R.drawable.ic_arrow_back);
+    toolbar.setNavigationIconTint(color(com.google.android.material.R.attr.colorOnSurface));
     toolbar.setNavigationContentDescription("Quay lại Cài đặt");
     toolbar.setNavigationOnClickListener(v -> settings());
   }

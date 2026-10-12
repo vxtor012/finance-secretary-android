@@ -382,4 +382,75 @@ public class LedgerTest {
     } catch (IllegalArgumentException expected) {
     }
   }
+
+  @Test
+  public void deletedReminderRetainsPaymentsAndCanStillUndoHistoricalGroup() throws Exception {
+    Ledger l = ledger();
+    JSONObject rule =
+        Ledger.obj(
+            "id",
+            "rent-delete",
+            "name",
+            "Rent to delete",
+            "amount",
+            1000000,
+            "next",
+            Ledger.today(),
+            "period",
+            "month",
+            "active",
+            true);
+    l.array("rules").put(rule);
+    JSONObject payment = action("expense", 1000000, "MB");
+    Ledger.put(payment, "ruleId", "rent-delete");
+    Ledger.put(payment, "occurrence", Ledger.today());
+    l.commit(new JSONArray().put(payment), "paid-rent");
+    String before = l.array("events").toString();
+    l.deleteRule("rent-delete");
+    assertEquals(before, l.array("events").toString());
+    assertEquals(1000000, expense(l));
+    assertTrue(l.array("rules").optJSONObject(0).optBoolean("deleted"));
+    assertFalse(l.obligations().contains("Rent to delete"));
+    assertEquals(
+        "delete_rule",
+        l.array("audit").optJSONObject(l.array("audit").length() - 1).optString("action"));
+    Ledger restored = new Ledger(new JSONObject(l.data.toString()));
+    assertFalse(restored.obligations().contains("Rent to delete"));
+    try {
+      restored.commit(new JSONArray().put(payment), "pay-deleted");
+      fail();
+    } catch (IllegalArgumentException expected) {
+    }
+    restored.undo("paid-rent");
+    assertEquals(0, expense(restored));
+  }
+
+  @Test
+  public void deletingReminderWithPendingPaymentIsRejectedWithoutMutation() {
+    Ledger l = ledger();
+    l.array("rules")
+        .put(
+            Ledger.obj(
+                "id", "rent-delete", "name", "Rent", "next", Ledger.today(), "active", true));
+    Ledger.put(
+        l.data,
+        "pending",
+        Ledger.obj("actions", new JSONArray().put(Ledger.obj("ruleId", "rent-delete"))));
+    String before = l.data.toString();
+    try {
+      l.deleteRule("rent-delete");
+      fail();
+    } catch (IllegalArgumentException expected) {
+    }
+    assertEquals(before, l.data.toString());
+    l.data.remove("pending");
+    l.deleteRule("rent-delete");
+    before = l.data.toString();
+    try {
+      l.deleteRule("rent-delete");
+      fail();
+    } catch (IllegalArgumentException expected) {
+    }
+    assertEquals(before, l.data.toString());
+  }
 }

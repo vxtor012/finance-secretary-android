@@ -4,6 +4,13 @@
 
 Các phiên bản được xếp từ mới đến cũ. Số liệu kiểm thử bên dưới là ghi nhận tại thời điểm phát hành, không phải kết quả kiểm tra lại trong lần sửa tài liệu. Cài đè APK cùng chữ ký để giữ dữ liệu; sao lưu `.fsb` trước khi gỡ app hoặc chuyển máy.
 
+## Chưa phát hành
+
+- Giao dịch hiển thị thành dòng gọn, nhóm theo ngày và phân trang tối đa 3 ngày/30 dòng; hỗ trợ lọc thời gian, nguồn tiền, nghiệp vụ và trạng thái hoàn tác.
+- Chi tiết và hoàn tác mở từ từng dòng; hoàn tác giữ màn hình Giao dịch.
+- Nhắc hạn tách nghĩa vụ định kỳ/công nợ, giảm nội dung lặp và gom thao tác vào menu. Có thể xóa nhắc định kỳ sau xác nhận mà vẫn giữ lịch sử thanh toán.
+- Sửa màu nút Back trong các trang con Cài đặt để theo theme sáng/tối.
+
 ## v1.3.2
 
 - Sửa lỗi đọc sổ trong lúc ghi có thể làm mất bản ghi mới, khiến đề xuất offline không được lưu và job device-test thất bại.

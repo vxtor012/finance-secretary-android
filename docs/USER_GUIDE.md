@@ -50,6 +50,14 @@ Kiểm tra nghiệp vụ, số tiền, phí, ngày, danh mục, nguồn/đích v
 
 Sửa/hoàn tác có thể bị từ chối nếu làm sai quan hệ công nợ hoặc thẻ; cần xử lý giao dịch phụ thuộc trước. Xử lý đề xuất chờ trước khi tạo đề xuất khác hoặc xóa nguồn liên quan.
 
+## Theo dõi danh sách giao dịch
+
+Mở **Sổ → Giao dịch**. Danh sách nhóm theo ngày giao dịch, mới nhất trước; mỗi trang hiển thị tối đa **3 ngày có giao dịch và 30 dòng**. Nếu một ngày có nhiều hơn 30 giao dịch, ngày đó được tiếp tục ở trang sau. Dùng **Trước/Sau** ở cuối màn hình để chuyển trang.
+
+Bấm **Bộ lọc** để chọn tất cả thời gian, hôm nay, 7 ngày qua, tháng này hoặc khoảng ngày tùy chọn; lọc thêm nguồn tiền và nghiệp vụ. Nguồn ngừng dùng vẫn có thể được chọn để xem lịch sử. Lọc nguồn tính cả nguồn đi và nguồn đích của chuyển tiền/trả thẻ. Có thể ẩn giao dịch đã hoàn tác. **Xóa bộ lọc → Áp dụng** đưa về danh sách đầy đủ.
+
+Bấm một dòng để xem chi tiết và hoàn tác cả nhóm nếu cần. Hoàn tác từ đây giữ bạn ở màn hình Giao dịch.
+
 ## Nguồn tiền và số dư
 
 Trong **Sổ → Nguồn tiền**, thêm tiền mặt, ngân hàng, ví, tiết kiệm hoặc thẻ. Bí danh khi chat là tùy chọn, ví dụ `vcb, bank`. Chỉ thẻ tín dụng có ngày sao kê và thanh toán.
@@ -63,6 +71,8 @@ Nguồn chưa có dữ liệu có thể xóa; nguồn có giao dịch/mốc đ�
 Cho vay/thu hồi gốc và đi vay/trả gốc không phải chi phí/thu nhập. Khi thu/trả nợ, lấy **mã khoản nợ gốc** ở **Sổ → Nhắc hạn**, đặc biệt khi cùng người có nhiều khoản. Hạn trả có thể trống; khoản không có hạn vẫn có trong báo cáo.
 
 Mua bằng thẻ ghi chi phí và tăng nợ; trả thẻ giảm tiền và nợ, không ghi chi phí lần hai. App không tự nhập/khớp sao kê ngân hàng.
+
+Nghĩa vụ định kỳ được hiển thị thành dòng gọn theo hạn kế tiếp; công nợ có nhóm riêng. Bấm dòng nhắc hạn để mở menu **Chi tiết nhắc hạn**, **Xác nhận thanh toán**, **Tạm dừng/Kích hoạt lại** hoặc **Xóa nhắc hạn**. Xóa cần xác nhận, ngừng các lần nhắc tiếp theo và giữ giao dịch thanh toán cũ; không thể hoàn tác việc xóa. Nếu có đề xuất thanh toán đang chờ, cần xử lý đề xuất trước khi xóa. Công nợ gốc không bị xóa qua thao tác xóa nhắc định kỳ.
 
 Nghĩa vụ định kỳ có thể tạm dừng/kích hoạt lại. Đến hạn chỉ tạo nhắc; muốn ghi thanh toán, bấm xác nhận rồi duyệt đề xuất. Thông báo không tự ghi sổ.
 

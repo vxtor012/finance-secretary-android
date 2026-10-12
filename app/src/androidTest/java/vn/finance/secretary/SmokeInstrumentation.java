@@ -258,13 +258,15 @@ public class SmokeInstrumentation extends Instrumentation {
       check(migrated.optJSONArray("chat").length() == 5, "Upgrade trims only chat");
       runOnMainSync(upgraded::finish);
       Assistant.transport = GoogleAi::request;
+      compactScreens();
       result.putString(
           "stream",
           "PASS: startup, chat proposal, confirmation boundary, encrypted persistence, backup,"
               + " wrong password, tamper rejection, navigation, relaunch, pasted key, saved model,"
               + " AI success, original API error, provider migration, bounded chat, retained ledger"
               + " and proposal, settings hierarchy, About, screen capture, Book navigation,"
-              + " serialized ledger read/write");
+              + " serialized ledger read/write, compact history, paging, filters, reminder"
+              + " deletion, theme back icon");
       finish(Activity.RESULT_OK, result);
     } catch (Throwable failure) {
       java.io.StringWriter trace = new java.io.StringWriter();
@@ -272,6 +274,208 @@ public class SmokeInstrumentation extends Instrumentation {
       result.putString("stream", "FAIL: " + trace);
       finish(Activity.RESULT_CANCELED, result);
     }
+  }
+
+  private void compactScreens() throws Exception {
+    SecureStore store = new SecureStore(getTargetContext());
+    Ledger fixture = new Ledger();
+    Ledger.put(fixture.data, "onboarded", true);
+    Ledger.put(fixture.data, "aiProvider", "google");
+    for (int day = 0; day < 4; day++) {
+      int count = day == 0 ? 35 : 2;
+      for (int i = 0; i < count; i++) {
+        String note = "Khoản " + day + "-" + i;
+        fixture.commit(
+            new JSONArray()
+                .put(
+                    Ledger.obj(
+                        "type",
+                        "expense",
+                        "amount",
+                        45000,
+                        "account",
+                        "cash",
+                        "category",
+                        "Ăn uống/Ăn ngoài",
+                        "note",
+                        note,
+                        "date",
+                        java.time.LocalDate.now().minusDays(day).toString())),
+            "compact-" + day + "-" + i);
+      }
+    }
+    fixture
+        .array("rules")
+        .put(
+            Ledger.obj(
+                "id",
+                "compact-rent",
+                "name",
+                "Thuê nhà kiểm thử",
+                "amount",
+                2000000,
+                "next",
+                Ledger.today(),
+                "period",
+                "month",
+                "active",
+                true));
+    store.save(fixture.data);
+    Intent intent =
+        new Intent(getTargetContext(), MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+    Activity activity = startActivitySync(intent);
+    waitForIdleSync();
+    runOnMainSync(
+        () -> {
+          View decor = activity.getWindow().getDecorView();
+          findNavigation(decor).setSelectedItemId(3);
+          findButton(decor, "Giao dịch").performClick();
+          check(findText(decor, "Trang 1/3\n41 giao dịch"), "Bounded first page");
+          check(!findButton(decor, "Trước").isEnabled(), "First page disables previous");
+          check(findDescription(decor, "Khoản 0-34,") != null, "Newest transaction rendered");
+          check(
+              findDescription(decor, "Khoản 0-0,") == null,
+              "Busy-day overflow not rendered on first page");
+          findButton(decor, "Sau").performClick();
+          check(findText(decor, "Trang 2/3\n41 giao dịch"), "Next page updates position");
+          check(findDescription(decor, "Khoản 0-0,") != null, "Busy-day continuation rendered");
+          findButton(decor, "Sau").performClick();
+          check(!findButton(decor, "Sau").isEnabled(), "Last page disables next");
+          findButton(decor, "Bộ lọc").performClick();
+        });
+    waitForIdleSync();
+    clickDialog("Tất cả");
+    clickDialog("Hôm nay");
+    clickDialog("Áp dụng");
+    runOnMainSync(
+        () -> {
+          check(
+              findText(activity.getWindow().getDecorView(), "Trang 1/2\n35 giao dịch"),
+              "Today filter changes page count and resets page");
+          findButton(activity.getWindow().getDecorView(), "Bộ lọc").performClick();
+        });
+    waitForIdleSync();
+    clickDialog("Xóa bộ lọc");
+    clickDialog("Áp dụng");
+    runOnMainSync(
+        () -> {
+          check(
+              findText(activity.getWindow().getDecorView(), "Trang 1/3\n41 giao dịch"),
+              "Clearing filters restores all dates");
+          findButton(activity.getWindow().getDecorView(), "Nhắc hạn").performClick();
+          View row = findDescription(activity.getWindow().getDecorView(), "Thuê nhà kiểm thử,");
+          check(row != null, "Compact reminder row");
+          row.performClick();
+        });
+    waitForIdleSync();
+    clickDialog("Xóa nhắc hạn");
+    waitForIdleSync();
+    clickDialog("Hủy");
+    check(
+        !store.load().optJSONArray("rules").optJSONObject(0).optBoolean("deleted"),
+        "Cancel keeps reminder");
+    runOnMainSync(
+        () ->
+            findDescription(activity.getWindow().getDecorView(), "Thuê nhà kiểm thử,")
+                .performClick());
+    waitForIdleSync();
+    clickDialog("Xóa nhắc hạn");
+    waitForIdleSync();
+    clickDialog("Xóa");
+    waitForIdleSync();
+    check(
+        store.load().optJSONArray("rules").optJSONObject(0).optBoolean("deleted"),
+        "Delete persisted");
+    check(store.load().optJSONArray("events").length() == 41, "Delete keeps transactions");
+    runOnMainSync(
+        () -> {
+          check(
+              findDescription(activity.getWindow().getDecorView(), "Thuê nhà kiểm thử,") == null,
+              "Deleted reminder hidden");
+          activity.finish();
+        });
+    waitForIdleSync();
+    for (String theme : new String[] {"dark", "light"}) {
+      getTargetContext()
+          .getSharedPreferences("appearance", 0)
+          .edit()
+          .putString("theme", theme)
+          .commit();
+      Activity themed = startActivitySync(intent);
+      waitForIdleSync();
+      runOnMainSync(
+          () -> {
+            findNavigation(themed.getWindow().getDecorView()).setSelectedItemId(4);
+            findButton(themed.getWindow().getDecorView(), "Giới thiệu  ›").performClick();
+            com.google.android.material.appbar.MaterialToolbar toolbar =
+                findToolbar(themed.getWindow().getDecorView());
+            check(
+                toolbar.getNavigationIconTint() != null
+                    && toolbar.getNavigationIconTint()
+                        == Ui.color(themed, com.google.android.material.R.attr.colorOnSurface),
+                "Back icon uses theme contrast in " + theme);
+            check(toolbar.getNavigationIcon() != null, "Back icon present");
+            ((MainActivity) themed).getOnBackPressedDispatcher().onBackPressed();
+            check(
+                findButton(themed.getWindow().getDecorView(), "Giới thiệu  ›") != null,
+                "Back returns to settings");
+            themed.finish();
+          });
+      waitForIdleSync();
+    }
+    getTargetContext()
+        .getSharedPreferences("appearance", 0)
+        .edit()
+        .putString("theme", "system")
+        .commit();
+  }
+
+  private void clickDialog(String label) {
+    long deadline = System.currentTimeMillis() + 5000;
+    while (System.currentTimeMillis() < deadline) {
+      android.view.accessibility.AccessibilityNodeInfo root =
+          getUiAutomation().getRootInActiveWindow();
+      if (root != null) {
+        java.util.List<android.view.accessibility.AccessibilityNodeInfo> nodes =
+            root.findAccessibilityNodeInfosByText(label);
+        for (android.view.accessibility.AccessibilityNodeInfo node : nodes) {
+          if (!label.contentEquals(node.getText())) continue;
+          android.view.accessibility.AccessibilityNodeInfo target = node;
+          while (target != null && !target.isClickable()) target = target.getParent();
+          if (target != null
+              && target.performAction(
+                  android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK)) {
+            waitForIdleSync();
+            return;
+          }
+        }
+      }
+      android.os.SystemClock.sleep(100);
+    }
+    throw new AssertionError("Dialog action not found: " + label);
+  }
+
+  private View findDescription(View view, String prefix) {
+    if (view.getContentDescription() != null
+        && view.getContentDescription().toString().startsWith(prefix)) return view;
+    if (view instanceof ViewGroup)
+      for (int i = 0; i < ((ViewGroup) view).getChildCount(); i++) {
+        View result = findDescription(((ViewGroup) view).getChildAt(i), prefix);
+        if (result != null) return result;
+      }
+    return null;
+  }
+
+  private com.google.android.material.appbar.MaterialToolbar findToolbar(View view) {
+    if (view instanceof com.google.android.material.appbar.MaterialToolbar)
+      return (com.google.android.material.appbar.MaterialToolbar) view;
+    if (view instanceof ViewGroup)
+      for (int i = 0; i < ((ViewGroup) view).getChildCount(); i++) {
+        com.google.android.material.appbar.MaterialToolbar result =
+            findToolbar(((ViewGroup) view).getChildAt(i));
+        if (result != null) return result;
+      }
+    return null;
   }
 
   private void concurrentReadDuringWrite() throws Exception {
