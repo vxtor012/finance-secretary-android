@@ -478,6 +478,7 @@ public class SmokeInstrumentation extends Instrumentation {
       String selected = operations[index];
       if (index > 0) {
         clickDialog(current);
+        if (selected.equals("Chi tiêu")) scrollDialogToStart();
         clickDialog(selected);
       }
       waitForIdleSync();
@@ -529,6 +530,27 @@ public class SmokeInstrumentation extends Instrumentation {
       if (child != null) count += countNodeText(child, text);
     }
     return count;
+  }
+
+  private void scrollDialogToStart() {
+    for (int attempt = 0; attempt < 10; attempt++) {
+      android.view.accessibility.AccessibilityNodeInfo root =
+          getUiAutomation().getRootInActiveWindow();
+      if (root == null || !scrollBackward(root)) return;
+      waitForIdleSync();
+      android.os.SystemClock.sleep(100);
+    }
+  }
+
+  private boolean scrollBackward(android.view.accessibility.AccessibilityNodeInfo node) {
+    if (node.isScrollable()
+        && node.performAction(
+            android.view.accessibility.AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)) return true;
+    for (int i = 0; i < node.getChildCount(); i++) {
+      android.view.accessibility.AccessibilityNodeInfo child = node.getChild(i);
+      if (child != null && scrollBackward(child)) return true;
+    }
+    return false;
   }
 
   private void clickDialog(String label) {

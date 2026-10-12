@@ -118,6 +118,10 @@ jobs:
           done
           test "$(adb shell getprop sys.boot_completed | tr -d '\r')" = 1 || { cat /tmp/emulator.log; exit 1; }
           sleep 60
+          # Match the local 375dp phone used for the complete UI smoke flow.
+          # The ten-option native Spinner otherwise clips the first option on small AVDs.
+          adb shell wm density 160
+          adb shell wm size 375x800
           adb shell settings put global window_animation_scale 0
           adb shell settings put global transition_animation_scale 0
           adb shell settings put global animator_duration_scale 0
