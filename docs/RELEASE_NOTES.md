@@ -1,3 +1,9 @@
+# Lịch sử phiên bản
+
+[Mục lục](README.md) · [Tải APK](https://github.com/vxtor012/finance-secretary-android/releases) · [Hướng dẫn cập nhật](USER_GUIDE.md)
+
+Các phiên bản được xếp từ mới đến cũ. Số liệu kiểm thử bên dưới là ghi nhận tại thời điểm phát hành, không phải kết quả kiểm tra lại trong lần sửa tài liệu. Cài đè APK cùng chữ ký để giữ dữ liệu; sao lưu `.fsb` trước khi gỡ app hoặc chuyển máy.
+
 ## v1.3.2
 
 - Sửa lỗi đọc sổ trong lúc ghi có thể làm mất bản ghi mới, khiến đề xuất offline không được lưu và job device-test thất bại.

@@ -1,69 +1,68 @@
-# Thư ký tài chính — Android
+# Thư ký tài chính
 
-Ứng dụng chat tiếng Việt theo [product one-page](docs/PRODUCT_ONE_PAGE.md). Không cần backend, database server hay tài khoản ứng dụng. Người dùng tải APK, nhập API key Google AI Studio và chọn model; mặc định `gemma-4-26b-a4b-it`.
+Ứng dụng Android mã nguồn mở để ghi sổ tài chính cá nhân bằng tiếng Việt. Ghi thu chi qua chat hoặc biểu mẫu, quản lý nguồn tiền, công nợ và thẻ tín dụng, xem báo cáo và nhận nhắc hạn.
 
-Bản 1.2 chuyển hoàn toàn sang Google AI Studio. Cài đè bản cũ giữ sổ, rồi nhập key Google mới; key OpenRouter không được dùng lại.
+**Android 8.0+ · Java 17 · MIT · Không cần máy chủ riêng**
 
-## Cài đặt
+[Tải APK](https://github.com/vxtor012/finance-secretary-android/releases/latest) · [Hướng dẫn sử dụng](docs/USER_GUIDE.md) · [Build từ mã nguồn](docs/DEVELOPMENT.md) · [English](README.en.md)
 
-1. Mở [Releases](https://github.com/vxtor012/finance-secretary-android/releases/latest), tải `finance-secretary.apk`.
-2. Android 8.0 trở lên: cho phép cài ứng dụng từ nguồn tải APK khi Android hỏi.
-3. Vào Cài đặt → Kết nối AI. Nhập API key Google AI Studio. Key và model tự lưu khi chỉnh sửa hoặc rời Cài đặt. Bấm **Kiểm tra kết nối** để kiểm tra key và gọi thử model đã chọn. Lỗi xác thực, hạn mức, chính sách hoặc model được hiển thị cụ thể.
-4. Cho phép thông báo để nhận nhắc hạn và báo cáo. Thêm MB, MoMo, thẻ ở Nguồn tiền nếu cần. Tiền mặt đã có sẵn, không bắt buộc nhập số dư ban đầu.
+## Bắt đầu trong vài phút
 
-## Sử dụng
+1. Tải `finance-secretary.apk` từ **Releases** và cài trên Android. Cho phép cài từ nguồn tải APK nếu Android yêu cầu.
+2. Mở app. Có sẵn nguồn **Tiền mặt**; chưa cần nhập số dư ban đầu.
+3. Trong **Chat**, thử `chi 45k cash ăn sáng` — không cần mạng hoặc API key.
+4. Kiểm tra số tiền, ngày, nguồn tiền và danh mục trong đề xuất, rồi xác nhận. Giao dịch chỉ được ghi sau bước này.
+5. Mở **Sổ → Giao dịch** và **Báo cáo** để xem kết quả.
 
-- Chat “Sáng ăn phở 45k tiền mặt”, xem nguồn tiền/ngày/danh mục rồi xác nhận. Nếu thiếu dữ liệu, trợ lý hỏi lại. Nhiều giao dịch được ghi nguyên nhóm hoặc không ghi.
-- Offline: `chi 50k cash ăn sáng`, `thu 10tr cash lương`. Ghi nhanh có đủ loại nghiệp vụ kể cả công nợ, chuyển khoản và thẻ.
-- `báo cáo`, `tháng này tôi tiêu bao nhiêu`, `ai còn nợ tôi`, `hoàn tác`, `sửa cuối chi 70k cash ăn sáng`. Với sửa cuối, toàn bộ nhóm cuối được thay thế sau xác nhận. Lịch sử cho phép hoàn tác một nhóm cụ thể.
-- Trả nợ cần mã khoản gốc trong Nhắc hạn để tránh phân bổ sai khi cùng người có nhiều khoản.
-- Nghĩa vụ định kỳ chỉ trở thành giao dịch khi bạn bấm xác nhận và duyệt đề xuất. Nhắc hạn không tự ghi thanh toán. Có thể tạm dừng và kích hoạt lại.
-- Đối soát số dư tại Nguồn tiền. Trước đó app chỉ báo biến động, không khẳng định tiền thực có. Mốc đối soát là số dư ở thời điểm ghi nhận; sửa giao dịch trước mốc thay đổi báo cáo nhưng không tự đổi số dư đã xác minh.
-- Báo cáo theo ngày/tuần/tháng/năm hoặc kỳ tùy chọn có phân bổ chi phí, so sánh kỳ trước, dòng tiền, nợ và nghĩa vụ. Báo cáo định kỳ của kỳ hoàn tất có trong Báo cáo → Tùy chọn báo cáo → Báo cáo định kỳ.
-- Sao lưu mã hóa `.fsb` bằng mật khẩu ít nhất 10 ký tự; khôi phục trên thiết bị mới. API key không có trong sao lưu. JSON xuất ra đọc được và có dữ liệu tài chính/hội thoại, cần lưu riêng tư.
+Muốn chat tự nhiên như “Sáng ăn phở 45k tiền mặt”, vào **Cài đặt → Kết nối AI**, nhập key của bạn từ [Google AI Studio](https://aistudio.google.com/apikey), chọn model và bấm **Kiểm tra kết nối**. Xem [hướng dẫn API key của Google](https://ai.google.dev/gemini-api/docs/api-key). Key/model tự lưu; không đưa key vào mã nguồn. Model mặc định trong repo là `gemma-4-26b-a4b-it`; khả năng sử dụng phụ thuộc key và dịch vụ Google.
 
-## Build và release
+> Khi cập nhật, cài đè APK có cùng chữ ký để giữ dữ liệu. Trước khi gỡ app, xóa dữ liệu hoặc đổi điện thoại, tạo sao lưu `.fsb` và giữ mật khẩu.
 
-Java 17, Android SDK platform 35 và build-tools 35.0.0. Gradle Wrapper 8.11.1 có sẵn.
+## Tính năng
 
-```sh
-./gradlew testDebugUnitTest lintDebug assembleDebug
+| Nhu cầu | Cách hỗ trợ |
+|---|---|
+| Ghi thu chi | Chat tiếng Việt có AI; lệnh thu/chi và biểu mẫu Ghi nhanh dùng được offline |
+| Nguồn tiền | Tiền mặt, ngân hàng, ví, tiết kiệm, thẻ; bí danh và đối soát số dư |
+| Chuyển tiền | Chuyển nội bộ không tính là thu/chi; phí tính riêng |
+| Công nợ | Cho vay, đi vay, thu/trả từng phần, khoản không có hạn |
+| Thẻ tín dụng | Mua bằng thẻ, trả thẻ, hoàn tiền, ngày sao kê và hạn thanh toán |
+| Nhắc hạn | Công nợ và nghĩa vụ định kỳ; đến hạn không tự ghi thanh toán |
+| Báo cáo | Ngày/tuần/tháng/năm hoặc kỳ tùy chọn; phân bổ chi phí, so sánh kỳ, dòng tiền và nợ |
+| Dữ liệu | Xác nhận trước khi ghi, sửa/hoàn tác theo nhóm, sao lưu mã hóa và xuất JSON |
+
+App dùng VND số nguyên, 40 danh mục cố định và sổ cá nhân trên một thiết bị. Chưa đồng bộ ngân hàng/nhiều thiết bị, đọc SMS, OCR hóa đơn hoặc hỗ trợ sổ chung. Giao diện hiện dùng tiếng Việt. AI và hạn mức miễn phí phụ thuộc nhà cung cấp; repo không bảo đảm API luôn miễn phí.
+
+## Dữ liệu và AI
+
+Sổ được mã hóa trên thiết bị bằng AES-GCM với khóa trong Android Keystore; Android cloud backup bị tắt. Khi dùng AI, app gửi tin nhắn và ngữ cảnh cần thiết như nguồn tiền, danh mục, công nợ/nghĩa vụ tới Google. AI tạo đề xuất; app xác thực và tính toán nghiệp vụ.
+
+Sao lưu `.fsb` có mật khẩu, không chứa API key hoặc đề xuất chưa xác nhận. JSON xuất ra là dữ liệu đọc được. Xem [quyền riêng tư và sao lưu](docs/PRIVACY.md).
+
+## Build nhanh
+
+Cần JDK 17, Android SDK Platform 35 và Build Tools 35.0.0. Repo có Gradle Wrapper 8.11.1; không cần cài Gradle riêng hoặc API key để build debug.
+
+```powershell
+git clone https://github.com/vxtor012/finance-secretary-android.git
+cd finance-secretary-android
+.\gradlew.bat testDebugUnitTest lintDebug assembleDebug
 ```
 
-Debug APK: `app/build/outputs/apk/debug/app-debug.apk`. Release cần khóa ký ổn định:
+Trên macOS/Linux, dùng `./gradlew` thay cho `.\gradlew.bat` (chạy `chmod +x gradlew` nếu cần). APK: `app/build/outputs/apk/debug/app-debug.apk`.
 
-```sh
-export RELEASE_STORE_FILE=/absolute/path/release.jks
-export RELEASE_STORE_PASSWORD=your-password
-export RELEASE_KEY_PASSWORD=your-password
-export RELEASE_KEY_ALIAS=finance
-./gradlew assembleRelease
-```
+Xem [thiết lập môi trường và kiểm thử](docs/DEVELOPMENT.md), [kiến trúc](docs/ARCHITECTURE.md) và [phát hành APK đã ký](docs/RELEASING.md).
 
-GitHub Actions kiểm tra mỗi push/PR. Khi push tag `v*`, workflow build APK release đã ký và đính kèm APK cùng SHA256 vào GitHub Release. Repo cần hai Actions secrets: `ANDROID_KEYSTORE_BASE64` (keystore base64) và `ANDROID_KEYSTORE_PASSWORD`. Không commit khóa ký. Tăng `versionCode` và `versionName` trong `app/build.gradle` cho bản mới, giữ nguyên khóa ký để cài cập nhật.
+## Tài liệu và cộng đồng
 
-Kiểm thử tích hợp Android thực tế: `./gradlew assembleDebug assembleDebugAndroidTest`, cài hai APK debug lên emulator Android 35 rồi chạy `adb shell am instrument -w vn.finance.secretary.test/vn.finance.secretary.SmokeInstrumentation`. GitHub Actions chạy tự động bộ kiểm tra này.
+- [Mục lục tài liệu](docs/README.md)
+- [Hướng dẫn sử dụng và xử lý lỗi](docs/USER_GUIDE.md)
+- [Phạm vi sản phẩm](docs/PRODUCT_ONE_PAGE.md)
+- [Lịch sử phiên bản](docs/RELEASE_NOTES.md)
+- [Hướng dẫn đóng góp](CONTRIBUTING.md)
 
-## Kiến trúc và quyền riêng tư
+Gửi lỗi hoặc đề xuất qua [GitHub Issues](https://github.com/vxtor012/finance-secretary-android/issues). Dùng dữ liệu giả và che thông tin cá nhân/API key khi báo lỗi.
 
-- Android Java, giao diện native tối giản, không có WebView/remote frontend. Chat chỉ giữ 5 tin gần nhất; nút + → Xóa hội thoại dọn chat và giữ nguyên giao dịch/đề xuất chờ xác nhận.
-- `Ledger`: VND số nguyên, event ledger, kiểm tra nghiệp vụ, replay, batch nguyên tử, chống trùng request ID, sửa/hoàn tác có audit trail.
-- `SecureStore`: AES-GCM + Android Keystore; atomic file thay thế nguyên trạng thái. Android cloud backup bị tắt; không log API key hay dữ liệu tài chính. Sao lưu di chuyển dùng PBKDF2-HMAC-SHA256 210.000 vòng + AES-GCM.
-- `Assistant`: HTTPS Google AI Studio; model chỉ trích xuất đề xuất. App tự xác thực/tính toán. Gửi tin nhắn hiện tại, tối đa 5 tin nhắn người dùng gần nhất, tên/bí danh tài khoản, danh mục và thông tin công nợ/nghĩa vụ; không gửi toàn bộ lịch sử/sổ hay mốc số dư.
-- `ReminderReceiver`: lịch thông báo theo múi giờ máy và giờ người dùng chọn; báo cáo tuần/tháng/năm cho kỳ đã kết thúc. Receiver chỉ đọc sổ, tránh xung đột ghi với Activity; metadata kỳ báo cáo không chứa số liệu tài chính.
+## Giấy phép
 
-## Giới hạn hiện tại
-
-Phiên bản đầu là app cho một người trên thiết bị Android, chưa đồng bộ nhiều thiết bị hay ngân hàng. Thẻ hiển thị dư nợ, sao kê theo giao dịch từng kỳ và ngày sao kê/hạn trả; không nhập hoặc khớp sao kê ngân hàng tự động. Số dư quá khứ trong báo cáo là dòng tiền kỳ; phần nguồn tiền thể hiện số dư hiện tại từ mốc đối soát, không giả làm số dư cuối kỳ cũ. Thông báo Android là lịch không chính xác tuyệt đối; force-stop app sẽ ngừng nhắc đến khi mở lại. App yêu cầu xác thực khóa màn hình khi mở nếu thiết bị đã đặt khóa; chưa có PIN riêng. AI miễn phí phụ thuộc Google AI Studio; app không tự đổi model.
-
-Đặc tả gốc loại app native khỏi MVP; yêu cầu triển khai Android trong cuộc trao đổi này thay thế giới hạn đó. Các chức năng ngoài phạm vi khác giữ theo tài liệu gốc.
-
-## Bản 1.3
-
-- Cho phép chụp và quay màn hình. Icon app hình sổ, hỗ trợ adaptive icon và themed icon Android 13+.
-- Chỉ thẻ tín dụng có ngày sao kê và ngày thanh toán. Tên gọi khác khi chat là tùy chọn, ví dụ `vcb, bank`.
-- Xóa nguồn chưa có dữ liệu; nguồn đã có giao dịch hoặc mốc đối soát được ngừng sử dụng để giữ lịch sử. Có thể khôi phục. Giữ ít nhất một nguồn đang dùng; xử lý đề xuất đang chờ trước khi xóa nguồn liên quan.
-- Bộ 40 danh mục cố định cho giao dịch mới; danh mục của giao dịch cũ giữ nguyên. Không có thao tác thêm/sửa/xóa danh mục.
-- Cài đặt chia Kết nối AI, Nhắc nhở, Giao diện, Dữ liệu và Giới thiệu. Key/model tự lưu; giờ nhắc lưu riêng.
-
-Điều hướng: Chat · Sổ · Báo cáo · Cài đặt. Sổ có Nguồn tiền, Giao dịch và Nhắc hạn. Nút + ở Chat chỉ có Ghi nhanh và Xóa hội thoại.
+Dự án sử dụng [MIT License](LICENSE). Bạn có thể sử dụng, chỉnh sửa và phân phối theo các điều kiện của giấy phép.
