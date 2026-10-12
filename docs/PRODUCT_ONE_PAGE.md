@@ -1,6 +1,6 @@
 # Product one-page — Thư ký tài chính
 
-**Phạm vi:** ứng dụng Android hiện tại, mã nguồn 1.3.2
+**Phạm vi:** ứng dụng Android hiện tại, mã nguồn 1.3.3
 **Đối tượng:** cá nhân quản lý tài chính bằng VND, ưu tiên người dùng tiếng Việt
 
 [Mục lục](README.md) · [Sử dụng](USER_GUIDE.md) · [Kiến trúc](ARCHITECTURE.md)
