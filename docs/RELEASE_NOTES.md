@@ -1,3 +1,11 @@
+## v1.3.2
+
+- Sửa lỗi đọc sổ trong lúc ghi có thể làm mất bản ghi mới, khiến đề xuất offline không được lưu và job device-test thất bại.
+- Dùng khóa đồng bộ chung giữa các instance lưu trữ, bao gồm khởi tạo khóa mã hóa, đọc và ghi. Giữ nguyên khóa mã hóa và định dạng dữ liệu hiện có.
+- Thêm test tái hiện đọc trong lúc file tạm đang mở, kiểm tra reader chờ write hoàn tất và dữ liệu mới tồn tại khi tải lại. Giữ đầy đủ test đề xuất offline và ranh giới xác nhận giao dịch.
+
+Cài đè APK để giữ dữ liệu hiện có.
+
 ## v1.3.1
 
 - Sửa tên app bị lỗi mã hóa tiếng Việt trong trình cài đặt và launcher.

@@ -32,6 +32,7 @@ public class SmokeInstrumentation extends Instrumentation {
               .toString()
               .equals("Thư ký tài chính"),
           "Installed application label is valid Vietnamese");
+      concurrentReadDuringWrite();
       SecureStore store = new SecureStore(getTargetContext());
       Ledger ledger = new Ledger();
       Ledger.put(ledger.data, "onboarded", true);
@@ -262,13 +263,80 @@ public class SmokeInstrumentation extends Instrumentation {
           "PASS: startup, chat proposal, confirmation boundary, encrypted persistence, backup,"
               + " wrong password, tamper rejection, navigation, relaunch, pasted key, saved model,"
               + " AI success, original API error, provider migration, bounded chat, retained ledger"
-              + " and proposal, settings hierarchy, About, screen capture, Book navigation");
+              + " and proposal, settings hierarchy, About, screen capture, Book navigation,"
+              + " serialized ledger read/write");
       finish(Activity.RESULT_OK, result);
     } catch (Throwable failure) {
       java.io.StringWriter trace = new java.io.StringWriter();
       failure.printStackTrace(new java.io.PrintWriter(trace));
       result.putString("stream", "FAIL: " + trace);
       finish(Activity.RESULT_CANCELED, result);
+    }
+  }
+
+  private void concurrentReadDuringWrite() throws Exception {
+    SecureStore reader = new SecureStore(getTargetContext());
+    reader.save(Ledger.obj("revision", 0));
+    java.util.concurrent.CountDownLatch writeOpened = new java.util.concurrent.CountDownLatch(1),
+        releaseWrite = new java.util.concurrent.CountDownLatch(1),
+        readerStarted = new java.util.concurrent.CountDownLatch(1);
+    android.util.AtomicFile pausedFile =
+        new android.util.AtomicFile(
+            new java.io.File(getTargetContext().getFilesDir(), "ledger.enc")) {
+          @Override
+          public java.io.FileOutputStream startWrite() throws java.io.IOException {
+            java.io.FileOutputStream stream = super.startWrite();
+            writeOpened.countDown();
+            try {
+              if (!releaseWrite.await(10, java.util.concurrent.TimeUnit.SECONDS))
+                throw new java.io.IOException("Writer was not released");
+            } catch (InterruptedException e) {
+              Thread.currentThread().interrupt();
+              throw new java.io.IOException(e);
+            }
+            return stream;
+          }
+        };
+    SecureStore writer = new SecureStore(getTargetContext(), pausedFile);
+    java.util.concurrent.ExecutorService workers =
+        java.util.concurrent.Executors.newFixedThreadPool(2);
+    java.util.concurrent.Future<?> writing = null;
+    java.util.concurrent.Future<JSONObject> reading = null;
+    try {
+      writing =
+          workers.submit(
+              () -> {
+                writer.save(Ledger.obj("revision", 1));
+                return null;
+              });
+      check(
+          writeOpened.await(10, java.util.concurrent.TimeUnit.SECONDS),
+          "Writer opened temporary ledger");
+      reading =
+          workers.submit(
+              () -> {
+                readerStarted.countDown();
+                return reader.load();
+              });
+      check(
+          readerStarted.await(10, java.util.concurrent.TimeUnit.SECONDS),
+          "Concurrent reader started");
+      try {
+        reading.get(300, java.util.concurrent.TimeUnit.MILLISECONDS);
+        throw new AssertionError("Reader accessed ledger while atomic write was open");
+      } catch (java.util.concurrent.TimeoutException expected) {
+      }
+      releaseWrite.countDown();
+      writing.get(10, java.util.concurrent.TimeUnit.SECONDS);
+      check(
+          reading.get(10, java.util.concurrent.TimeUnit.SECONDS).optInt("revision") == 1,
+          "Reader sees completed write");
+      check(
+          new SecureStore(getTargetContext()).load().optInt("revision") == 1,
+          "Concurrent read cannot discard saved ledger");
+    } finally {
+      releaseWrite.countDown();
+      workers.shutdownNow();
     }
   }
 

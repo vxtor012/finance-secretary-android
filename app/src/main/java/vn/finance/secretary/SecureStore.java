@@ -12,52 +12,66 @@ import org.json.JSONObject;
 
 /** Entire private state encrypted with a non-exportable device Keystore key. */
 public final class SecureStore {
+  // All components run in the app process. AtomicFile itself does not lock readers or writers.
+  private static final Object STORE_LOCK = new Object();
   private final AtomicFile file;
   private final javax.crypto.SecretKey key;
 
   public SecureStore(Context context) throws Exception {
-    file = new AtomicFile(new File(context.getFilesDir(), "ledger.enc"));
-    KeyStore ks = KeyStore.getInstance("AndroidKeyStore");
-    ks.load(null);
-    if (!ks.containsAlias("finance-data")) {
-      KeyGenerator g = KeyGenerator.getInstance("AES", "AndroidKeyStore");
-      g.init(
-          new KeyGenParameterSpec.Builder(
-                  "finance-data", KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT)
-              .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-              .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-              .build());
-      g.generateKey();
+    this(context, new AtomicFile(new File(context.getFilesDir(), "ledger.enc")));
+  }
+
+  // Package-private file injection allows the device test to pause a real atomic write.
+  SecureStore(Context context, AtomicFile target) throws Exception {
+    file = target;
+    synchronized (STORE_LOCK) {
+      KeyStore ks = KeyStore.getInstance("AndroidKeyStore");
+      ks.load(null);
+      if (!ks.containsAlias("finance-data")) {
+        KeyGenerator g = KeyGenerator.getInstance("AES", "AndroidKeyStore");
+        g.init(
+            new KeyGenParameterSpec.Builder(
+                    "finance-data", KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT)
+                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                .build());
+        g.generateKey();
+      }
+      key = (javax.crypto.SecretKey) ks.getKey("finance-data", null);
     }
-    key = (javax.crypto.SecretKey) ks.getKey("finance-data", null);
   }
 
   public JSONObject load() throws Exception {
-    if (!file.getBaseFile().exists()) return new JSONObject();
-    byte[] raw = file.readFully();
-    if (raw.length < 29) throw new IOException("Dữ liệu hỏng");
-    Cipher c = Cipher.getInstance("AES/GCM/NoPadding");
-    c.init(
-        Cipher.DECRYPT_MODE,
-        key,
-        new GCMParameterSpec(128, java.util.Arrays.copyOfRange(raw, 0, 12)));
-    return new JSONObject(new String(c.doFinal(raw, 12, raw.length - 12), StandardCharsets.UTF_8));
+    synchronized (STORE_LOCK) {
+      if (!file.getBaseFile().exists()) return new JSONObject();
+      byte[] raw = file.readFully();
+      if (raw.length < 29) throw new IOException("Dữ liệu hỏng");
+      Cipher c = Cipher.getInstance("AES/GCM/NoPadding");
+      c.init(
+          Cipher.DECRYPT_MODE,
+          key,
+          new GCMParameterSpec(128, java.util.Arrays.copyOfRange(raw, 0, 12)));
+      return new JSONObject(
+          new String(c.doFinal(raw, 12, raw.length - 12), StandardCharsets.UTF_8));
+    }
   }
 
   public void save(JSONObject data) throws Exception {
-    Cipher c = Cipher.getInstance("AES/GCM/NoPadding");
-    c.init(Cipher.ENCRYPT_MODE, key);
-    ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-    bytes.write(c.getIV());
-    bytes.write(c.doFinal(data.toString().getBytes(StandardCharsets.UTF_8)));
-    FileOutputStream stream = null;
-    try {
-      stream = file.startWrite();
-      stream.write(bytes.toByteArray());
-      file.finishWrite(stream);
-    } catch (Exception e) {
-      if (stream != null) file.failWrite(stream);
-      throw e;
+    synchronized (STORE_LOCK) {
+      Cipher c = Cipher.getInstance("AES/GCM/NoPadding");
+      c.init(Cipher.ENCRYPT_MODE, key);
+      ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+      bytes.write(c.getIV());
+      bytes.write(c.doFinal(data.toString().getBytes(StandardCharsets.UTF_8)));
+      FileOutputStream stream = null;
+      try {
+        stream = file.startWrite();
+        stream.write(bytes.toByteArray());
+        file.finishWrite(stream);
+      } catch (Exception e) {
+        if (stream != null) file.failWrite(stream);
+        throw e;
+      }
     }
   }
 
