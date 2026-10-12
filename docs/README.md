@@ -1,6 +1,6 @@
 # Tài liệu Thư ký tài chính
 
-Tài liệu phản ánh mã nguồn **1.3.3** trong `app/build.gradle`. Phiên bản APK phát hành xem tại [Releases](https://github.com/vxtor012/finance-secretary-android/releases).
+Tài liệu phản ánh mã nguồn **1.3.4** trong `app/build.gradle`. Phiên bản APK phát hành xem tại [Releases](https://github.com/vxtor012/finance-secretary-android/releases).
 
 | Bạn muốn… | Đọc tài liệu |
 |---|---|

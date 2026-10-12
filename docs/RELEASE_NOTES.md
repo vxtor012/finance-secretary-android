@@ -4,6 +4,17 @@
 
 Các phiên bản được xếp từ mới đến cũ. Số liệu kiểm thử bên dưới là ghi nhận tại thời điểm phát hành, không phải kết quả kiểm tra lại trong lần sửa tài liệu. Cài đè APK cùng chữ ký để giữ dữ liệu; sao lưu `.fsb` trước khi gỡ app hoặc chuyển máy.
 
+## v1.3.4
+
+- Căn giữa nút Bộ lọc, Trước/Sau; hai nút phân trang có chiều rộng và vùng bấm bằng nhau.
+- Bổ sung Back cho trang Kết nối AI, giữ tự lưu cấu hình; modal Danh mục chỉ có một nút Đóng.
+- Tiêu đề Chat khớp tên tab, phân biệt với Sổ.
+- Ghi nhanh chọn nghiệp vụ trước, thay đổi trường theo loại; lọc nguồn tiền/thẻ, danh mục và khoản nợ phù hợp. Không đưa trường ẩn vào đề xuất; kiểm tra hợp lệ trước khi tạo đề xuất.
+
+40 unit tests, lint và kiểm thử Android 35 đã đạt, gồm chuyển qua 10 nghiệp vụ Ghi nhanh, Back API ở theme sáng/tối và một nút Đóng trong Danh mục.
+
+Cài đè APK đã ký cùng khóa để giữ dữ liệu hiện có.
+
 ## v1.3.3
 
 - Giao dịch hiển thị thành dòng gọn, nhóm theo ngày và phân trang tối đa 3 ngày/30 dòng; hỗ trợ lọc thời gian, nguồn tiền, nghiệp vụ và trạng thái hoàn tác.

@@ -266,7 +266,8 @@ public class SmokeInstrumentation extends Instrumentation {
               + " AI success, original API error, provider migration, bounded chat, retained ledger"
               + " and proposal, settings hierarchy, About, screen capture, Book navigation,"
               + " serialized ledger read/write, compact history, paging, filters, reminder"
-              + " deletion, theme back icon");
+              + " deletion, theme back icon, API Back, single Close, operation-specific quick"
+              + " entry");
       finish(Activity.RESULT_OK, result);
     } catch (Throwable failure) {
       java.io.StringWriter trace = new java.io.StringWriter();
@@ -419,8 +420,10 @@ public class SmokeInstrumentation extends Instrumentation {
             check(
                 findButton(themed.getWindow().getDecorView(), "Giới thiệu  ›") != null,
                 "Back returns to settings");
-            themed.finish();
           });
+      waitForIdleSync();
+      quickEntryScreens(themed, theme.equals("light"));
+      runOnMainSync(themed::finish);
       waitForIdleSync();
     }
     getTargetContext()
@@ -428,6 +431,104 @@ public class SmokeInstrumentation extends Instrumentation {
         .edit()
         .putString("theme", "system")
         .commit();
+  }
+
+  private void quickEntryScreens(Activity activity, boolean fullFlow) {
+    runOnMainSync(
+        () -> {
+          View decor = activity.getWindow().getDecorView();
+          findButton(decor, "Kết nối AI  ›").performClick();
+          check(findToolbar(decor).getNavigationIcon() != null, "API settings exposes Back");
+          check(findToolbar(decor).getTitle().toString().equals("Kết nối AI"), "API page title");
+          findDescription(decor, "Quay lại Cài đặt").performClick();
+          check(findButton(decor, "Dữ liệu  ›") != null, "API Back returns to settings");
+          findButton(decor, "Dữ liệu  ›").performClick();
+          findButton(decor, "Danh mục  ›").performClick();
+        });
+    waitForIdleSync();
+    check(dialogTextCount("Đóng") == 1, "Category dialog has one Close button");
+    clickDialog("Đóng");
+    runOnMainSync(
+        () -> {
+          findNavigation(activity.getWindow().getDecorView()).setSelectedItemId(1);
+          check(
+              findToolbar(activity.getWindow().getDecorView()).getTitle().toString().equals("Chat"),
+              "Chat title matches tab");
+          if (fullFlow) findButton(activity.getWindow().getDecorView(), "Thêm").performClick();
+        });
+    if (!fullFlow) return;
+    waitForIdleSync();
+    clickDialog("Ghi nhanh");
+    clickDialog("Chi tiêu");
+    String current = "Chi tiêu";
+    String[] operations = {
+      "Chi tiêu",
+      "Thu nhập",
+      "Chuyển nội bộ",
+      "Cho vay",
+      "Đi vay",
+      "Thu hồi nợ",
+      "Trả nợ gốc",
+      "Chi bằng thẻ",
+      "Thanh toán thẻ",
+      "Hoàn tiền thẻ",
+      "Chi tiêu"
+    };
+    for (int index = 0; index < operations.length; index++) {
+      String selected = operations[index];
+      if (index > 0) {
+        clickDialog(current);
+        clickDialog(selected);
+      }
+      waitForIdleSync();
+      boolean category =
+          selected.equals("Chi tiêu")
+              || selected.equals("Thu nhập")
+              || selected.equals("Chi bằng thẻ")
+              || selected.equals("Hoàn tiền thẻ");
+      check((dialogTextCount("Danh mục") > 0) == category, "Category visibility: " + selected);
+      check(
+          (dialogTextCount("Chuyển đến") > 0) == selected.equals("Chuyển nội bộ"),
+          "Destination visibility: " + selected);
+      check(
+          (dialogTextCount("Phí chuyển khoản (tùy chọn)") > 0) == selected.equals("Chuyển nội bộ"),
+          "Fee visibility: " + selected);
+      check(
+          (dialogTextCount("Người vay") > 0) == selected.equals("Cho vay"),
+          "Borrower visibility: " + selected);
+      check(
+          (dialogTextCount("Người cho vay") > 0) == selected.equals("Đi vay"),
+          "Lender visibility: " + selected);
+      boolean settlement = selected.equals("Thu hồi nợ") || selected.equals("Trả nợ gốc");
+      check(
+          (dialogTextCount("Khoản nợ gốc") > 0) == settlement,
+          "Debt picker visibility: " + selected);
+      check(
+          (dialogTextCount("Thẻ cần thanh toán") > 0) == selected.equals("Thanh toán thẻ"),
+          "Card destination visibility: " + selected);
+      current = selected;
+    }
+    clickDialog("Đóng");
+  }
+
+  private int dialogTextCount(String text) {
+    android.view.accessibility.AccessibilityNodeInfo root =
+        getUiAutomation().getRootInActiveWindow();
+    if (root == null) return 0;
+    return countNodeText(root, text);
+  }
+
+  private int countNodeText(android.view.accessibility.AccessibilityNodeInfo node, String text) {
+    int count =
+        text.contentEquals(node.getText() == null ? "" : node.getText())
+                || text.contentEquals(node.getHintText() == null ? "" : node.getHintText())
+            ? 1
+            : 0;
+    for (int i = 0; i < node.getChildCount(); i++) {
+      android.view.accessibility.AccessibilityNodeInfo child = node.getChild(i);
+      if (child != null) count += countNodeText(child, text);
+    }
+    return count;
   }
 
   private void clickDialog(String label) {

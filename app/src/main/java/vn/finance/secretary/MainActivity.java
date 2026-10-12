@@ -198,7 +198,7 @@ public class MainActivity extends AppCompatActivity {
     currentScreen = name;
     settingsDetail = false;
     if (toolbar != null) {
-      toolbar.setTitle(destination == 3 ? "Sổ" : name.equals("Chat") ? "Sổ của bạn" : name);
+      toolbar.setTitle(destination == 3 ? "Sổ" : name);
       toolbar.setSubtitle(null);
       toolbar.setVisibility(destination == 3 && shortViewport() ? View.GONE : View.VISIBLE);
       toolbar.setNavigationIcon(null);
@@ -305,6 +305,16 @@ public class MainActivity extends AppCompatActivity {
     return b;
   }
 
+  private Button centeredButton(String title, Runnable action) {
+    MaterialButton result = (MaterialButton) button(title, action);
+    result.setGravity(Gravity.CENTER);
+    result.setPadding(dp(12), 0, dp(12), 0);
+    result.setInsetTop(0);
+    result.setInsetBottom(0);
+    result.setMinHeight(dp(48));
+    return result;
+  }
+
   private EditText field(String hint, String value) {
     EditText e = new TextInputEditText(this);
     e.setHint(hint);
@@ -320,13 +330,13 @@ public class MainActivity extends AppCompatActivity {
   private void dialog(String title, LinearLayout content, String ok, Runnable action) {
     ScrollView scroll = new ScrollView(this);
     scroll.addView(content);
-    AlertDialog d =
+    MaterialAlertDialogBuilder builder =
         new MaterialAlertDialogBuilder(this)
             .setTitle(title)
             .setView(scroll)
-            .setNegativeButton("Đóng", null)
-            .setPositiveButton(ok, null)
-            .create();
+            .setPositiveButton(ok, null);
+    if (!ok.equals("Đóng")) builder.setNegativeButton("Đóng", null);
+    AlertDialog d = builder.create();
     d.setOnShowListener(
         v ->
             d.getButton(-1)
@@ -943,72 +953,191 @@ public class MainActivity extends AppCompatActivity {
       confirmPending();
       return;
     }
-    LinearLayout f = form();
-    List<String> types =
-        List.of(
-            "expense",
-            "income",
-            "transfer",
-            "lend",
-            "borrow",
-            "collect",
-            "repay",
-            "card_purchase",
-            "card_payment",
-            "card_refund");
-    List<String> labels = new ArrayList<>();
-    for (String t : types) labels.add(Ledger.typeLabel(t));
-    Spinner type =
-        spinner(
-            f,
-            "Nghiệp vụ: chi, thu, chuyển, cho vay, vay, thu nợ, trả nợ, mua thẻ, trả thẻ, hoàn thẻ",
-            labels);
+    if (rule != null) {
+      quickEntryForm(rule, "expense");
+      return;
+    }
+    String[] labels = QuickEntry.TYPES.stream().map(Ledger::typeLabel).toArray(String[]::new);
+    new MaterialAlertDialogBuilder(this)
+        .setTitle("Chọn loại ghi chép")
+        .setItems(
+            labels, (dialog, selected) -> quickEntryForm(null, QuickEntry.TYPES.get(selected)))
+        .setNegativeButton("Đóng", null)
+        .show();
+  }
+
+  private Spinner entryAccounts(
+      LinearLayout parent,
+      String label,
+      boolean cards,
+      Map<String, java.util.function.Supplier<String>> values,
+      String key,
+      String previous) {
+    List<String> ids = new ArrayList<>(), names = new ArrayList<>();
+    for (int i = 0; i < ledger.array("accounts").length(); i++) {
+      JSONObject account = ledger.array("accounts").optJSONObject(i);
+      if (account.optBoolean("archived") || account.optString("type").equals("card") != cards)
+        continue;
+      ids.add(account.optString("id"));
+      names.add(account.optString("name"));
+    }
+    Spinner choice =
+        spinner(parent, label, names.isEmpty() ? List.of("Chưa có nguồn phù hợp") : names);
+    choice.setEnabled(!ids.isEmpty());
+    choice.setSelection(Math.max(0, ids.indexOf(previous)));
+    if (ids.isEmpty())
+      parent.addView(
+          text(
+              cards
+                  ? "Thêm thẻ tín dụng trong Sổ → Nguồn tiền trước khi ghi."
+                  : "Cần một nguồn tiền đang sử dụng để ghi giao dịch.",
+              14));
+    values.put(key, () -> ids.isEmpty() ? "" : ids.get(choice.getSelectedItemPosition()));
+    return choice;
+  }
+
+  private void quickEntryForm(JSONObject rule, String initialType) {
+    LinearLayout content = form();
+    List<String> labels =
+        QuickEntry.TYPES.stream()
+            .map(Ledger::typeLabel)
+            .collect(java.util.stream.Collectors.toList());
+    Spinner type = spinner(content, "Loại ghi chép", labels);
+    type.setSelection(QuickEntry.TYPES.indexOf(initialType));
     EditText amount =
         field("Số tiền: 50k / 1tr5", rule == null ? "" : String.valueOf(rule.optLong("amount")));
-    f.addView(amount);
-    Spinner source = spinner(f, "Nguồn tiền", accountNames()),
-        to = spinner(f, "Nguồn đích (chuyển / trả thẻ)", accountNames());
-    Spinner category = spinner(f, "Danh mục", Ledger.STANDARD_CATEGORIES);
-    category.setSelection(Ledger.STANDARD_CATEGORIES.indexOf("Sinh hoạt/Khác"));
-    EditText note = field("Nội dung", rule == null ? "" : rule.optString("name")),
-        date = field("Ngày YYYY-MM-DD", Ledger.today()),
-        fee = field("Phí chuyển khoản", "0"),
-        person = field("Đối tượng vay / cho vay", ""),
-        debt = field("Mã khoản nợ gốc (xem Nhắc hạn)", ""),
-        due = field("Hạn trả YYYY-MM-DD (có thể trống)", "");
-    for (EditText e : List.of(note, date, fee, person, debt, due)) f.addView(e);
+    content.addView(amount);
+    LinearLayout specific = new LinearLayout(this);
+    specific.setOrientation(LinearLayout.VERTICAL);
+    content.addView(specific);
+    EditText note = field("Nội dung", rule == null ? "" : rule.optString("name"));
+    EditText date = dateFilterField("Ngày giao dịch", LocalDate.now());
+    content.addView(note);
+    content.addView(date);
+    Map<String, java.util.function.Supplier<String>> values = new HashMap<>();
+    Runnable update =
+        () -> {
+          String previous = values.containsKey("account") ? values.get("account").get() : "";
+          values.clear();
+          specific.removeAllViews();
+          LinearLayout fields = form();
+          fields.setPadding(0, 0, 0, 0);
+          specific.addView(fields, new LinearLayout.LayoutParams(-1, -2));
+          String selected = QuickEntry.TYPES.get(type.getSelectedItemPosition());
+          boolean cards = List.of("card_purchase", "card_refund").contains(selected);
+          String sourceLabel =
+              switch (selected) {
+                case "income", "borrow", "collect" -> "Nhận tiền vào";
+                case "transfer" -> "Chuyển từ";
+                case "repay", "card_payment" -> "Thanh toán từ";
+                case "card_purchase", "card_refund" -> "Thẻ tín dụng";
+                default -> "Nguồn tiền";
+              };
+          entryAccounts(fields, sourceLabel, cards, values, "account", previous);
+          if (List.of("transfer", "card_payment").contains(selected))
+            entryAccounts(
+                fields,
+                selected.equals("card_payment") ? "Thẻ cần thanh toán" : "Chuyển đến",
+                selected.equals("card_payment"),
+                values,
+                "to",
+                "");
+          if (QuickEntry.category(selected)) {
+            List<String> categories =
+                Ledger.STANDARD_CATEGORIES.stream()
+                    .filter(c -> c.startsWith("Thu nhập/") == selected.equals("income"))
+                    .collect(java.util.stream.Collectors.toList());
+            Spinner category = spinner(fields, "Danh mục", categories);
+            category.setSelection(
+                Math.max(
+                    0,
+                    categories.indexOf(
+                        selected.equals("income") ? "Thu nhập/Khác" : "Sinh hoạt/Khác")));
+            values.put("category", () -> category.getSelectedItem().toString());
+          }
+          if (selected.equals("transfer")) {
+            EditText fee = field("Phí chuyển khoản (tùy chọn)", "0");
+            fields.addView(fee);
+            values.put("fee", () -> fee.getText().toString());
+          }
+          if (List.of("lend", "borrow").contains(selected)) {
+            EditText person = field(selected.equals("lend") ? "Người vay" : "Người cho vay", "");
+            EditText due = field("Hạn trả YYYY-MM-DD (tùy chọn)", "");
+            fields.addView(person);
+            fields.addView(due);
+            values.put("person", () -> person.getText().toString());
+            values.put("due", () -> due.getText().toString());
+          }
+          if (List.of("collect", "repay").contains(selected)) {
+            List<String> ids = new ArrayList<>(), debts = new ArrayList<>();
+            for (int i = 0; i < ledger.array("events").length(); i++) {
+              JSONObject event = ledger.array("events").optJSONObject(i);
+              if (!event.optBoolean("active", true)
+                  || !event.optString("type").equals(selected.equals("collect") ? "lend" : "borrow")
+                  || ledger.debt(event.optString("id")) <= 0) continue;
+              ids.add(event.optString("id"));
+              debts.add(
+                  event.optString("person")
+                      + " · "
+                      + Ledger.money(ledger.debt(event.optString("id")))
+                      + " · "
+                      + dateLabel(event.optString("date")));
+            }
+            Spinner debt =
+                spinner(
+                    fields,
+                    "Khoản nợ gốc",
+                    debts.isEmpty() ? List.of("Không có khoản nợ phù hợp") : debts);
+            debt.setEnabled(!ids.isEmpty());
+            if (ids.isEmpty())
+              fields.addView(text("Ghi khoản cho vay/đi vay trước khi thu hoặc trả nợ.", 14));
+            values.put(
+                "debtId", () -> ids.isEmpty() ? "" : ids.get(debt.getSelectedItemPosition()));
+          }
+        };
+    type.setOnItemSelectedListener(
+        new AdapterView.OnItemSelectedListener() {
+          public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+            update.run();
+          }
+
+          public void onNothingSelected(AdapterView<?> parent) {}
+        });
+    update.run();
     dialog(
-        "Ghi nhanh offline",
-        f,
+        "Ghi nhanh",
+        content,
         "Đề xuất",
         () -> {
-          JSONObject action =
+          String selected = QuickEntry.TYPES.get(type.getSelectedItemPosition());
+          JSONObject fields =
               Ledger.obj(
-                  "type",
-                  types.get(type.getSelectedItemPosition()),
                   "amount",
-                  Assistant.amount(amount.getText().toString()),
-                  "account",
-                  source.getSelectedItem().toString(),
-                  "to",
-                  to.getSelectedItem().toString(),
-                  "category",
-                  category.getSelectedItem().toString(),
+                  amount.getText().toString(),
                   "note",
                   note.getText().toString(),
                   "date",
-                  date.getText().toString(),
-                  "fee",
-                  Assistant.amount(fee.getText().toString()),
-                  "person",
-                  person.getText().toString(),
-                  "debtId",
-                  debt.getText().toString(),
-                  "due",
-                  due.getText().toString());
+                  date.getText().toString());
+          values.forEach((key, value) -> Ledger.put(fields, key, value.get()));
+          if (fields.optString("account").isEmpty()
+              || List.of("transfer", "card_payment").contains(selected)
+                  && fields.optString("to").isEmpty())
+            throw new IllegalArgumentException("Thêm nguồn tiền hoặc thẻ phù hợp trước khi ghi.");
+          if (List.of("collect", "repay").contains(selected)
+              && fields.optString("debtId").isEmpty())
+            throw new IllegalArgumentException("Chưa có khoản nợ phù hợp để thanh toán.");
+          JSONObject action = QuickEntry.action(selected, fields);
           if (rule != null) {
             Ledger.put(action, "ruleId", rule.optString("id"));
             Ledger.put(action, "occurrence", ledger.nextDue(rule).toString());
+          }
+          // Validate before leaving the form; confirmation remains the only real ledger write.
+          try {
+            Ledger trial = new Ledger(new JSONObject(ledger.data.toString()));
+            trial.commit(new JSONArray().put(action), UUID.randomUUID().toString());
+          } catch (JSONException invalid) {
+            throw new IllegalArgumentException(
+                "Không đọc được dữ liệu để kiểm tra đề xuất.", invalid);
           }
           mutate(
               () ->
@@ -1410,8 +1539,8 @@ public class MainActivity extends AppCompatActivity {
     if (!historyAccount.isEmpty()) filter += " · " + accountLabel(historyAccount);
     if (!historyType.isEmpty()) filter += " · " + Ledger.typeLabel(historyType);
     if (!historyIncludeUndone) filter += " · Chưa hoàn tác";
-    Button filters = button("Bộ lọc", this::historyFilters);
-    controls.addView(filters, new LinearLayout.LayoutParams(-2, -2));
+    Button filters = centeredButton("Bộ lọc", this::historyFilters);
+    controls.addView(filters, new LinearLayout.LayoutParams(dp(96), dp(48)));
     TextView summary = text(filter, 13);
     summary.setTextColor(color(com.google.android.material.R.attr.colorOnSurfaceVariant));
     summary.setMaxLines(2);
@@ -1475,7 +1604,7 @@ public class MainActivity extends AppCompatActivity {
       pager.addView(filters, new LinearLayout.LayoutParams(-2, -2));
     }
     Button previous =
-        button(
+        centeredButton(
             "Trước",
             () -> {
               historyPage--;
@@ -1483,14 +1612,14 @@ public class MainActivity extends AppCompatActivity {
             });
     previous.setEnabled(historyPage > 0);
     Button next =
-        button(
+        centeredButton(
             "Sau",
             () -> {
               historyPage++;
               history();
             });
     next.setEnabled(historyPage + 1 < pages.size());
-    pager.addView(previous, new LinearLayout.LayoutParams(-2, -2));
+    pager.addView(previous, new LinearLayout.LayoutParams(dp(88), dp(48)));
     int total = pages.stream().mapToInt(List::size).sum();
     TextView position =
         text(
@@ -1504,7 +1633,7 @@ public class MainActivity extends AppCompatActivity {
             13);
     position.setGravity(Gravity.CENTER);
     pager.addView(position, new LinearLayout.LayoutParams(0, -2, 1));
-    pager.addView(next, new LinearLayout.LayoutParams(-2, -2));
+    pager.addView(next, new LinearLayout.LayoutParams(dp(88), dp(48)));
     body.addView(pager);
   }
 
@@ -1995,12 +2124,7 @@ public class MainActivity extends AppCompatActivity {
   }
 
   private void aiSettings() {
-    screen("Cài đặt", 4);
-    body.removeAllViews();
-    ScrollView scroll = new ScrollView(this);
-    LinearLayout f = form();
-    scroll.addView(f);
-    body.addView(scroll);
+    LinearLayout f = settingsPage("Kết nối AI");
     EditText key = field("Key AI Studio", ledger.data.optString("apiKey"));
     key.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
     key.setTypeface(

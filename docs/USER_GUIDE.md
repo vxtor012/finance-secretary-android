@@ -19,7 +19,18 @@ thu 10tr cash lương
 
 `cash` là bí danh của nguồn Tiền mặt có sẵn. Lệnh offline lấy ngày hôm nay và danh mục mặc định `Sinh hoạt/Khác` hoặc `Thu nhập/Khác`. Kiểm tra và chỉnh đề xuất trước khi xác nhận. Số tiền hỗ trợ `50k`, `1tr5`, `1500000`; phải là VND nguyên. Với tên nguồn nhiều từ, dùng biểu mẫu để chọn chính xác.
 
-**Chat → + → Ghi nhanh** hỗ trợ chi, thu, chuyển tiền, cho vay, đi vay, thu nợ, trả nợ, mua bằng thẻ, trả thẻ và hoàn tiền thẻ. Dùng biểu mẫu này khi không có mạng hoặc AI lỗi.
+**Chat → + → Ghi nhanh** mở bước chọn loại ghi chép trước. Sau khi chọn, biểu mẫu chỉ hiện trường liên quan; có thể đổi loại ngay trong biểu mẫu. Số tiền, ngày giao dịch và nội dung là các trường chung.
+
+| Loại ghi | Trường riêng |
+|---|---|
+| Thu/chi | Nguồn tiền và danh mục thu/chi phù hợp |
+| Chuyển nội bộ | Nguồn đi, nguồn đến, phí tùy chọn |
+| Cho vay/đi vay | Nguồn tiền, người vay/cho vay, hạn trả tùy chọn |
+| Thu/trả nợ gốc | Nguồn tiền và chọn khoản nợ còn lại phù hợp |
+| Mua/hoàn tiền thẻ | Chọn thẻ tín dụng và danh mục chi phí |
+| Thanh toán thẻ | Nguồn tiền thanh toán và thẻ đích |
+
+Nguồn đã ngừng dùng bị loại khỏi lựa chọn ghi mới. Nếu chưa có thẻ hoặc khoản nợ phù hợp, biểu mẫu thông báo để bạn bổ sung dữ liệu trước. Các trường bị ẩn khi đổi nghiệp vụ không được gửi vào đề xuất. Kiểm tra hợp lệ diễn ra trước khi tạo đề xuất; vẫn cần xác nhận để ghi sổ. Toàn bộ luồng này hoạt động offline.
 
 ## Chat tự nhiên với AI
 
