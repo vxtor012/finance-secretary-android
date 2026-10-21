@@ -39,6 +39,7 @@ public class MainActivity extends AppCompatActivity {
   private boolean busy = false, settingsDetail = false;
   private String backupPassword = "";
   private byte[] exportBytes;
+  private boolean financeReport = false;
   private int historyPage = 0;
   private LocalDate historyStart, historyEnd;
   private String historyAccount = "", historyType = "", historyPeriod = "Tất cả";
@@ -1848,7 +1849,32 @@ public class MainActivity extends AppCompatActivity {
     scroll.addView(f);
     body.addView(scroll);
     f.addView(button("Kỳ xem · " + start + " → " + end, this::reportDialog));
+    com.google.android.material.tabs.TabLayout tabs =
+        new com.google.android.material.tabs.TabLayout(this);
+    tabs.setTabMode(com.google.android.material.tabs.TabLayout.MODE_FIXED);
+    tabs.addTab(tabs.newTab().setText("Tổng quan"), !financeReport);
+    tabs.addTab(tabs.newTab().setText("Quản lý tài chính"), financeReport);
+    tabs.addOnTabSelectedListener(
+        new com.google.android.material.tabs.TabLayout.OnTabSelectedListener() {
+          public void onTabSelected(com.google.android.material.tabs.TabLayout.Tab tab) {
+            financeReport = tab.getPosition() == 1;
+            showReport(start, end);
+          }
+
+          public void onTabUnselected(com.google.android.material.tabs.TabLayout.Tab tab) {}
+
+          public void onTabReselected(com.google.android.material.tabs.TabLayout.Tab tab) {}
+        });
+    f.addView(
+        tabs,
+        new LinearLayout.LayoutParams(
+            -1,
+            dp((int) Math.ceil(48 * Math.max(1f, getResources().getConfiguration().fontScale)))));
     JSONObject totals = ledger.totals(start, end);
+    if (financeReport) {
+      financeReport(f, start, end, totals);
+      return;
+    }
     MaterialCardView summary = card(f, false);
     LinearLayout content = form();
     summary.addView(content);
@@ -1867,7 +1893,12 @@ public class MainActivity extends AppCompatActivity {
     categories.sort((a, b) -> Long.compare(groups.optLong(b), groups.optLong(a)));
     if (categories.isEmpty()) f.addView(text("Chưa có chi tiêu trong kỳ này.", 14));
     for (String label : categories) {
-      f.addView(text(label + " · " + Ledger.money(groups.optLong(label)), 15));
+      listRow(
+          f,
+          label,
+          "Chạm để xem giao dịch",
+          Ledger.money(groups.optLong(label)),
+          () -> categoryTransactions(start, end, label, 0));
       ProgressBar bar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
       bar.setProgressTintList(
           android.content.res.ColorStateList.valueOf(
@@ -2254,6 +2285,169 @@ public class MainActivity extends AppCompatActivity {
     f.addView(note);
   }
 
+  private void categoryTransactions(LocalDate start, LocalDate end, String category, int page) {
+    List<JSONObject> events = FinanceMethod.transactions(ledger, start, end, category);
+    LinearLayout content = form();
+    long total = 0;
+    for (JSONObject event : events) total = Math.addExact(total, event.optLong("expense"));
+    content.addView(
+        text(
+            start + " → " + end + "\n" + events.size() + " giao dịch · " + Ledger.money(total),
+            15));
+    if (events.isEmpty()) content.addView(text("Chưa có giao dịch trong kỳ này.", 15));
+    int size = TransactionHistory.ROWS_PER_PAGE;
+    for (int i = page * size; i < Math.min(events.size(), (page + 1) * size); i++) {
+      JSONObject event = events.get(i);
+      listRow(
+          content,
+          event.optString("note").isBlank()
+              ? Ledger.typeLabel(event.optString("type"))
+              : event.optString("note"),
+          dateLabel(event.optString("date")) + " · " + accountLabel(event.optString("account")),
+          Ledger.money(event.optLong("expense")),
+          () -> transactionDetails(event));
+    }
+    ScrollView scroll = new ScrollView(this);
+    scroll.addView(content);
+    MaterialAlertDialogBuilder builder =
+        new MaterialAlertDialogBuilder(this)
+            .setTitle(category)
+            .setView(scroll)
+            .setPositiveButton("Đóng", null);
+    if (page > 0)
+      builder.setNegativeButton(
+          "Trước", (d, w) -> categoryTransactions(start, end, category, page - 1));
+    if ((page + 1) * size < events.size())
+      builder.setNeutralButton(
+          "Tiếp", (d, w) -> categoryTransactions(start, end, category, page + 1));
+    builder.show();
+  }
+
+  private void financeReport(
+      LinearLayout parent, LocalDate start, LocalDate end, JSONObject totals) {
+    String method = FinanceMethod.selected(ledger);
+    parent.addView(text("Phương pháp " + FinanceMethod.name(method), 20));
+    parent.addView(text("Thu nhập trong kỳ: " + Ledger.money(totals.optLong("income")), 16));
+    long income = totals.optLong("income");
+    if (income <= 0)
+      parent.addView(
+          text(
+              "Chưa có thu nhập dương trong kỳ nên chưa tính được hạn mức. Chi tiêu vẫn hiển thị"
+                  + " bên dưới.",
+              15));
+    parent.addView(
+        text(
+            "Danh mục được tự động phân nhóm theo phương pháp. Chạm danh mục bên dưới để xem đã chi"
+                + " gì.",
+            14));
+    String[] labels = FinanceMethod.labels(method);
+    int[] percentages = FinanceMethod.percentages(method);
+    JSONObject groups = totals.optJSONObject("groups");
+    long[] spent = FinanceMethod.spending(groups, method);
+    for (int i = 0; i < labels.length; i++) {
+      MaterialCardView section = card(parent, false);
+      LinearLayout content = form();
+      section.addView(content);
+      content.addView(text(labels[i] + " · " + percentages[i] + "%", 18));
+      long target = FinanceMethod.target(income, percentages[i]);
+      if (income > 0) content.addView(text("Mục tiêu: " + Ledger.money(target), 15));
+      if (i >= spent.length) {
+        if (FinanceMethod.DEFAULT.equals(method)) {
+          long available = Math.subtractExact(income, totals.optLong("expense"));
+          content.addView(text("Còn lại sau thu–chi: " + Ledger.money(available), 18));
+          if (income > 0)
+            content.addView(
+                text(
+                    available >= target
+                        ? "Khoản còn lại đạt mục tiêu 20%."
+                        : "Còn thiếu so với mục tiêu: "
+                            + Ledger.money(Math.subtractExact(target, available)),
+                    15));
+          content.addView(
+              text(
+                  "Đây là khoản có thể dành cho tiết kiệm, chưa xác nhận đã tiết kiệm thực tế.",
+                  14));
+        } else content.addView(text("Chưa theo dõi phân bổ vào quỹ này.", 14));
+        continue;
+      }
+      content.addView(text("Đã chi: " + Ledger.money(spent[i]), 18));
+      if (income > 0) {
+        boolean over = spent[i] > target;
+        TextView status =
+            text(
+                (over ? "Vượt mức: " : "Còn có thể chi: ")
+                    + Ledger.money(Math.abs(target - spent[i])),
+                15);
+        if (over) status.setTextColor(color(com.google.android.material.R.attr.colorError));
+        content.addView(status);
+        ProgressBar progress =
+            new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        progress.setMax(1000);
+        progress.setProgress(
+            target > 0
+                ? (int) Math.min(1000d, Math.max(0d, (double) spent[i] / target * 1000d))
+                : (spent[i] > 0 ? 1000 : 0));
+        progress.setProgressTintList(
+            android.content.res.ColorStateList.valueOf(
+                color(
+                    over
+                        ? com.google.android.material.R.attr.colorError
+                        : com.google.android.material.R.attr.colorPrimary)));
+        progress.setContentDescription(
+            "Đã chi " + Ledger.money(spent[i]) + " trên " + Ledger.money(target));
+        content.addView(progress);
+      }
+      List<String> categories = new ArrayList<>();
+      for (Iterator<String> it = groups.keys(); it.hasNext(); ) {
+        String category = it.next();
+        if (FinanceMethod.group(method, category) == i) categories.add(category);
+      }
+      categories.sort((a, b) -> Long.compare(groups.optLong(b), groups.optLong(a)));
+      for (String category : categories)
+        listRow(
+            content,
+            category,
+            "Xem giao dịch",
+            Ledger.money(groups.optLong(category)),
+            () -> categoryTransactions(start, end, category, 0));
+      if (categories.isEmpty()) content.addView(text("Chưa có chi tiêu trong nhóm này.", 14));
+    }
+    long remaining = Math.subtractExact(income, totals.optLong("expense"));
+    parent.addView(text("Còn lại sau thu–chi: " + Ledger.money(remaining), 18));
+    parent.addView(
+        text(
+            "Khoản còn lại không đồng nghĩa với tiền đã tiết kiệm hoặc đầu tư; chưa trừ biến động"
+                + " vay, trả gốc và chuyển tiền. Với 6 chiếc lọ, hai quỹ tích lũy có mục tiêu riêng"
+                + " nhưng chưa có dữ liệu phân bổ thực tế.",
+            14));
+  }
+
+  private void financeSettings() {
+    LinearLayout f = settingsPage("Quản lý tài chính");
+    f.addView(
+        text(
+            "Chọn phương pháp có sẵn. Danh mục được tự động phân nhóm, không cần thiết lập tỷ lệ.",
+            15));
+    String current = FinanceMethod.selected(ledger);
+    String[] methods = {FinanceMethod.DEFAULT, FinanceMethod.SIX_JARS};
+    for (String method : methods) {
+      String description =
+          method.equals(FinanceMethod.DEFAULT)
+              ? "Thiết yếu 50% · Mong muốn 30% · Tiết kiệm 20%"
+              : "Thiết yếu 55% · Hưởng thụ 10% · Giáo dục 10% · Cho đi 5% · Tự do tài chính 10% ·"
+                  + " Tiết kiệm dài hạn 10%";
+      settingRow(
+          f,
+          FinanceMethod.name(method) + (current.equals(method) ? " · Đang chọn" : ""),
+          description,
+          () -> {
+            Ledger.put(ledger.data, "financeMethod", method);
+            save();
+            financeSettings();
+          });
+    }
+  }
+
   private void settings() {
     if (connectionDraftSaver != null && currentScreen.equals("Cài đặt")) {
       draftHandler.removeCallbacks(connectionDraftSaver);
@@ -2267,6 +2461,11 @@ public class MainActivity extends AppCompatActivity {
     scroll.addView(f);
     body.addView(scroll);
     settingRow(f, "Kết nối AI", "Key Google AI Studio và model", this::aiSettings);
+    settingRow(
+        f,
+        "Quản lý tài chính",
+        FinanceMethod.name(FinanceMethod.selected(ledger)),
+        this::financeSettings);
     settingRow(f, "Nhắc nhở", "Giờ nhắc hạn và quyền thông báo", this::notificationSettings);
     settingRow(f, "Giao diện", "Sáng, tối hoặc theo hệ thống", this::appearanceSettings);
     settingRow(f, "Dữ liệu", "Danh mục, sao lưu và khôi phục", this::dataSettings);

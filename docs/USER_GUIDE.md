@@ -93,6 +93,17 @@ Mở **Báo cáo**, chọn ngày/tuần/tháng/năm hoặc kỳ tùy chọn. Tro
 
 Báo cáo phân biệt thu chi với dòng tiền, có phân bổ danh mục, so sánh kỳ, nợ và nghĩa vụ. Phần nguồn tiền là số dư hiện tại từ mốc đối soát, không phải số dư cuối một kỳ quá khứ.
 
+Trong tab **Tổng quan**, chạm một danh mục để xem các giao dịch còn hiệu lực trong đúng kỳ đang xem: ngày, nội dung, nguồn tiền, số tiền và tổng chi. Danh sách dài có nút **Trước/Tiếp**; chạm giao dịch để mở chi tiết. Số chi bao gồm phí được ghi nhận vào danh mục, không tính lại tiền trả thẻ hay chuyển nội bộ.
+
+Tab **Quản lý tài chính** so sánh chi tiêu theo nhóm với tỷ lệ trên thu nhập cùng kỳ. Chọn tại **Cài đặt → Quản lý tài chính**:
+
+- **50/30/20** (mặc định): thiết yếu 50%, mong muốn 30%, tiết kiệm 20%.
+- **6 chiếc lọ**: thiết yếu 55%, hưởng thụ 10%, giáo dục 10%, cho đi 5%, tự do tài chính 10%, tiết kiệm dài hạn 10%.
+
+Không có tỷ lệ hoặc nhóm tùy chỉnh. Ăn ngoài, đồ uống, thể thao, mua sắm, giải trí, đăng ký và quà tặng thuộc mong muốn/hưởng thụ. Với 6 chiếc lọ, học tập chuyển vào giáo dục và quà tặng chuyển vào cho đi; các danh mục chi còn lại thuộc thiết yếu. Các danh mục trong từng nhóm vẫn mở được danh sách chi tiết. Lựa chọn phương pháp được lưu cùng dữ liệu và sao lưu.
+
+Khi không có thu nhập dương trong kỳ, báo cáo vẫn hiển thị chi tiêu nhưng chưa tính hạn mức. **Còn lại sau thu–chi** là thu nhập trừ chi phí, không phải số dư tài khoản hay số tiền đã thực sự tiết kiệm. Các quỹ tích lũy hiển thị mục tiêu, chưa khẳng định phân bổ thực tế.
+
 Cấu hình tại **Cài đặt → Nhắc nhở**; giờ nhắc lưu riêng với AI. Báo cáo định kỳ xem ở **Báo cáo → Tùy chọn báo cáo → Báo cáo định kỳ**. Lịch theo múi giờ thiết bị. Android có thể trì hoãn thông báo; force-stop ngừng nhắc đến khi mở lại app.
 
 ## Sao lưu và chuyển máy
