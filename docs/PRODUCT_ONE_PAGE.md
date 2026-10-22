@@ -1,6 +1,6 @@
 # Product one-page — Thư ký tài chính
 
-**Phạm vi:** ứng dụng Android hiện tại, mã nguồn 1.3.4
+**Phạm vi:** ứng dụng Android hiện tại, mã nguồn 1.3.5
 **Đối tượng:** cá nhân quản lý tài chính bằng VND, ưu tiên người dùng tiếng Việt
 
 [Mục lục](README.md) · [Sử dụng](USER_GUIDE.md) · [Kiến trúc](ARCHITECTURE.md)
@@ -31,7 +31,7 @@ Lời hứa sản phẩm: ghi sổ có kiểm tra và xác nhận, cho biết ti
 | Công nợ | Cho vay, đi vay, thu/trả từng phần, nhiều khoản cùng đối tượng, hạn tùy chọn |
 | Định kỳ | Nghĩa vụ lặp, nhắc hạn, tạm dừng/kích hoạt lại, thanh toán sau xác nhận |
 | Thẻ | Mua, trả và hoàn tiền thẻ; dư nợ, kỳ sao kê, ngày thanh toán |
-| Báo cáo | Kỳ ngày/tuần/tháng/năm hoặc tùy chọn, phân bổ chi phí, so sánh kỳ, dòng tiền, nợ và nghĩa vụ |
+| Báo cáo | Kỳ ngày/tuần/tháng/năm hoặc tùy chọn, phân bổ chi phí, mở giao dịch theo danh mục, phương pháp 50/30/20 hoặc 6 chiếc lọ, so sánh kỳ, dòng tiền, nợ và nghĩa vụ |
 | Dữ liệu | Nhóm giao dịch nguyên tử, chống trùng request ID, sửa/hoàn tác, sao lưu `.fsb`, xuất JSON |
 
 Điều hướng gồm **Chat · Sổ · Báo cáo · Cài đặt**. Sổ gồm Nguồn tiền, Giao dịch và Nhắc hạn. Chat giữ 5 tin gần nhất; xóa chat không xóa sổ hoặc đề xuất đang chờ.

@@ -4,6 +4,18 @@
 
 Các phiên bản được xếp từ mới đến cũ. Số liệu kiểm thử bên dưới là ghi nhận tại thời điểm phát hành, không phải kết quả kiểm tra lại trong lần sửa tài liệu. Cài đè APK cùng chữ ký để giữ dữ liệu; sao lưu `.fsb` trước khi gỡ app hoặc chuyển máy.
 
+## v1.3.5
+
+- Chạm danh mục trong báo cáo để xem các giao dịch trong đúng kỳ, tổng chi và chi tiết từng giao dịch; danh sách dài có phân trang.
+- Thêm tab Quản lý tài chính, so sánh chi tiêu theo nhóm với tỷ lệ trên thu nhập cùng kỳ.
+- Chọn phương pháp 50/30/20 (mặc định) hoặc 6 chiếc lọ trong Cài đặt; tự động phân nhóm danh mục, không có tỷ lệ hoặc nhóm tùy chỉnh.
+- Phân biệt tiền còn lại sau thu–chi với số tiền đã thực sự tiết kiệm; hiển thị rõ khi chưa có thu nhập để tính hạn mức.
+- Sửa chiều cao tab theo cỡ chữ hệ thống để không cắt nhãn khi dùng chữ lớn.
+
+44 unit tests, lint, build và kiểm thử tích hợp Android 35 đã đạt cho tính năng. Đã kiểm tra mở danh mục, phân trang, chi tiết giao dịch, chọn phương pháp, chữ lớn, giao diện tối và màn hình ngang trên giả lập.
+
+Cài đè APK đã ký cùng khóa để giữ dữ liệu hiện có.
+
 ## v1.3.4
 
 - Căn giữa nút Bộ lọc, Trước/Sau; hai nút phân trang có chiều rộng và vùng bấm bằng nhau.
