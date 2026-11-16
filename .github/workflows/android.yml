@@ -130,8 +130,10 @@ jobs:
           adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
           adb shell pm grant vn.finance.secretary android.permission.POST_NOTIFICATIONS
           adb shell am instrument -w vn.finance.secretary.test/vn.finance.secretary.SmokeInstrumentation | tee device-test.txt
-          adb logcat -d > android-logcat.txt
           grep -q 'PASS: startup' device-test.txt
+          if ! timeout 30 adb logcat -d > android-logcat.txt; then
+            echo "::warning::Could not collect Android logcat after the smoke test."
+          fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:
