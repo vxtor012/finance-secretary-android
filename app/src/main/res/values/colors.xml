@@ -1,1 +1,20 @@
-<resources><color name="brand_primary">#146C54</color><color name="brand_on_primary">#FFFFFF</color><color name="brand_container">#A1F2CE</color><color name="brand_on_container">#002116</color><color name="app_surface">#FAFAF8</color><color name="app_surface_low">#F0F1ED</color><color name="app_surface_high">#E6E8E2</color><color name="app_on_surface">#18201C</color><color name="app_secondary_text">#56605A</color></resources>
+<resources>
+    <color name="brand_primary">#146C54</color>
+    <color name="brand_on_primary">#FFFFFF</color>
+    <color name="brand_container">#CBEFDD</color>
+    <color name="brand_on_container">#073828</color>
+    <color name="app_surface">#F8F9F8</color>
+    <color name="app_surface_low">#EEF1EF</color>
+    <color name="app_surface_high">#E6ECE8</color>
+    <color name="app_on_surface">#151517</color>
+    <color name="app_secondary_text">#47554E</color>
+    <color name="wallet_navigation">#E6ECE8</color>
+    <color name="wallet_navigation_selected">#146C54</color>
+    <color name="wallet_navigation_selected_icon">#FFFFFF</color>
+    <color name="wallet_action_primary">#146C54</color>
+    <color name="wallet_action_primary_icon">#FFFFFF</color>
+    <color name="ronas_chart_bar">#A6B4AC</color>
+    <color name="ronas_chart_selected">#247A60</color>
+    <color name="ronas_dark">#0C0C0C</color>
+    <color name="balance_card_green">#176451</color>
+</resources>

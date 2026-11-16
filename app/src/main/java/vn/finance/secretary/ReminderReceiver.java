@@ -155,7 +155,7 @@ public class ReminderReceiver extends BroadcastReceiver {
                   Notification n =
                       new Notification.Builder(context, "finance")
                           .setSmallIcon(android.R.drawable.ic_dialog_info)
-                          .setContentTitle("Thư ký tài chính")
+                          .setContentTitle(context.getString(R.string.app_name))
                           .setContentText(message.toString())
                           .setStyle(new Notification.BigTextStyle().bigText(message.toString()))
                           .setContentIntent(pi)

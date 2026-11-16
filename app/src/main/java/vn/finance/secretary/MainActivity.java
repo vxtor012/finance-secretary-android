@@ -32,6 +32,7 @@ public class MainActivity extends AppCompatActivity {
   private final Handler draftHandler = new Handler(Looper.getMainLooper());
   private Runnable connectionDraftSaver;
   private MaterialToolbar toolbar;
+  private View walletGreeting;
   private BottomNavigationView navigation;
   private OnBackPressedCallback back;
   private String currentScreen = "Chat", lastFailed = "", chatDraft = "";
@@ -40,6 +41,10 @@ public class MainActivity extends AppCompatActivity {
   private String backupPassword = "";
   private byte[] exportBytes;
   private boolean financeReport = false;
+  private boolean analyticsIncome, hideBalance;
+  private String dashboardAccount = "";
+  private android.graphics.Typeface urbanist;
+  private LocalDate reportStart = LocalDate.now().withDayOfMonth(1), reportEnd = LocalDate.now();
   private int historyPage = 0;
   private LocalDate historyStart, historyEnd;
   private String historyAccount = "", historyType = "", historyPeriod = "Tất cả";
@@ -47,7 +52,7 @@ public class MainActivity extends AppCompatActivity {
 
   @Override
   public void onCreate(Bundle b) {
-    String theme = getSharedPreferences("appearance", 0).getString("theme", "system");
+    String theme = getSharedPreferences("appearance", 0).getString("theme", "dark");
     AppCompatDelegate.setDefaultNightMode(
         theme.equals("dark")
             ? AppCompatDelegate.MODE_NIGHT_YES
@@ -56,6 +61,7 @@ public class MainActivity extends AppCompatActivity {
                 : AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM);
 
     super.onCreate(b);
+    urbanist = androidx.core.content.res.ResourcesCompat.getFont(this, R.font.urbanist);
     KeyguardManager gate = (KeyguardManager) getSystemService(KEYGUARD_SERVICE);
     if (gate.isDeviceSecure()) {
       startActivityForResult(
@@ -83,7 +89,7 @@ public class MainActivity extends AppCompatActivity {
       return;
     }
     layout();
-    showChat();
+    openOverview();
     if (getIntent().getBooleanExtra("reports", false)) reportInbox();
     ReminderReceiver.schedule(this);
     if (!ledger.data.has("onboarded")) onboarding();
@@ -108,7 +114,9 @@ public class MainActivity extends AppCompatActivity {
     root.setBackgroundColor(color(com.google.android.material.R.attr.colorSurface));
     setContentView(root);
     toolbar = new MaterialToolbar(this);
-    toolbar.setTitle("Thư ký tài chính");
+    toolbar.setTitleTextColor(color(com.google.android.material.R.attr.colorOnSurface));
+    toolbar.setSubtitleTextColor(color(com.google.android.material.R.attr.colorOnSurfaceVariant));
+    toolbar.setTitle(R.string.app_name);
     toolbar.setSubtitle("Trò chuyện để hiểu tiền của bạn");
     root.addView(toolbar, new LinearLayout.LayoutParams(-1, -2));
     bookTabs = new LinearLayout(this);
@@ -123,32 +131,24 @@ public class MainActivity extends AppCompatActivity {
     bodySize.gravity = Gravity.CENTER_HORIZONTAL;
     root.addView(body, bodySize);
     navigation = new BottomNavigationView(this);
-    navigation.setBackgroundColor(color(com.google.android.material.R.attr.colorSurface));
+    navigation.setBackground(walletShape(getColor(R.color.wallet_navigation), 27));
     navigation.setLabelVisibilityMode(
-        com.google.android.material.navigation.NavigationBarView.LABEL_VISIBILITY_LABELED);
-    String[] labels = {"Chat", "Báo cáo", "Sổ", "Cài đặt"};
-    int[] outline = {
-      R.drawable.ic_chat_outline,
-      R.drawable.ic_bar_chart_outline,
-      R.drawable.ic_account_balance_wallet_outline,
-      R.drawable.ic_settings_outline
-    };
-    int[] filled = {
-      R.drawable.ic_chat_filled,
-      R.drawable.ic_bar_chart_filled,
-      R.drawable.ic_account_balance_wallet_filled,
-      R.drawable.ic_settings_filled
-    };
-    int[] order = {0, 2, 1, 3};
-    for (int position = 0; position < 4; position++) {
-      int i = order[position];
-      android.graphics.drawable.StateListDrawable icon =
-          new android.graphics.drawable.StateListDrawable();
-      icon.addState(new int[] {android.R.attr.state_checked}, getDrawable(filled[i]));
-      icon.addState(new int[] {}, getDrawable(outline[i]));
-      navigation.getMenu().add(0, i + 1, position, labels[i]).setIcon(icon);
-    }
-    root.addView(navigation, new LinearLayout.LayoutParams(-1, -2));
+        com.google.android.material.navigation.NavigationBarView.LABEL_VISIBILITY_UNLABELED);
+    navigation.setItemActiveIndicatorEnabled(false);
+    navigation.setItemIconTintList(null);
+    navigation.setItemIconSize(dp(44));
+    navigation.setItemPaddingTop(dp(4));
+    navigation.setItemPaddingBottom(dp(4));
+    navigation.getMenu().add(0, 2, 0, "Tổng quan").setIcon(navIcon(2));
+    navigation.getMenu().add(0, 6, 1, "Phân tích").setIcon(navIcon(6));
+    navigation.getMenu().add(0, 1, 2, "Chat").setIcon(navIcon(1));
+    navigation.getMenu().add(0, 4, 3, "Cài đặt").setIcon(navIcon(4));
+    LinearLayout.LayoutParams navLayout =
+        new LinearLayout.LayoutParams(
+            navigationWidth(), dp(54));
+    navLayout.gravity = Gravity.CENTER_HORIZONTAL;
+    navLayout.setMargins(0, dp(4), 0, dp(6));
+    root.addView(navigation, navLayout);
     navigation.setOnItemSelectedListener(
         item -> {
           if (connectionDraftSaver != null && currentScreen.equals("Cài đặt")) {
@@ -157,17 +157,13 @@ public class MainActivity extends AppCompatActivity {
           }
           if (input != null && currentScreen.equals("Chat")) chatDraft = input.getText().toString();
           switch (item.getItemId()) {
-            case 1:
-              showChat();
-              break;
-            case 2:
-              showReport(LocalDate.now().withDayOfMonth(1), LocalDate.now());
-              break;
-            case 3:
-              accounts();
-              break;
-            default:
-              settings();
+            case 1 -> showChat();
+            case 2 -> openOverview();
+            case 6 -> {
+              financeReport = false;
+              showAnalytics(reportStart, reportEnd);
+            }
+            default -> settings();
           }
           return true;
         });
@@ -188,7 +184,7 @@ public class MainActivity extends AppCompatActivity {
               settings();
               return;
             }
-            showChat();
+            openOverview();
           }
         };
     getOnBackPressedDispatcher().addCallback(this, back);
@@ -199,14 +195,21 @@ public class MainActivity extends AppCompatActivity {
     currentScreen = name;
     settingsDetail = false;
     if (toolbar != null) {
+      if (walletGreeting != null) {
+        toolbar.removeView(walletGreeting);
+        walletGreeting = null;
+      }
       toolbar.setTitle(destination == 3 ? "Sổ" : name);
       toolbar.setSubtitle(null);
+      toolbar.setTitleCentered(false);
       toolbar.setVisibility(destination == 3 && shortViewport() ? View.GONE : View.VISIBLE);
       toolbar.setNavigationIcon(null);
-      navigation.getMenu().findItem(destination).setChecked(true);
+      toolbar.getMenu().clear();
+      navigation.getMenu().findItem(destination == 3 ? 2 : destination).setChecked(true);
+      toolbar.setNavigationOnClickListener(null);
     }
     bookNavigation(destination == 3, name);
-    if (back != null) back.setEnabled(!name.equals("Chat"));
+    if (back != null) back.setEnabled(!name.equals("Tổng quan"));
     input = null;
   }
 
@@ -243,6 +246,7 @@ public class MainActivity extends AppCompatActivity {
     TextView t = new TextView(this);
     t.setText(value);
     t.setTextSize(size);
+    t.setTypeface(urbanist);
     t.setTextColor(color(com.google.android.material.R.attr.colorOnSurface));
     t.setLineSpacing(dp(3), 1.05f);
     t.setPadding(dp(8), dp(8), dp(8), dp(8));
@@ -269,6 +273,7 @@ public class MainActivity extends AppCompatActivity {
       b.setPadding(dp(16), 0, dp(16), 0);
     }
     b.setText(title);
+    b.setTypeface(urbanist);
     b.setAllCaps(false);
     b.setOnClickListener(
         v -> {
@@ -321,6 +326,7 @@ public class MainActivity extends AppCompatActivity {
     e.setHint(hint);
     e.setText(value);
     e.setTextSize(15);
+    e.setTypeface(urbanist);
     return e;
   }
 
@@ -389,7 +395,7 @@ public class MainActivity extends AppCompatActivity {
 
   private void onboarding() {
     LinearLayout f = form();
-    f.addView(text("Dán key Google AI Studio để bắt đầu. Bạn có thể bỏ qua và ghi offline.", 16));
+    f.addView(text("Bạn có thể ghi thu chi offline ngay. Nhập key nếu muốn dùng trợ lý AI.", 16));
     f.addView(
         button(
             "Dữ liệu gửi tới Google",
@@ -400,25 +406,44 @@ public class MainActivity extends AppCompatActivity {
                             + " đầy đủ không được gửi; key được mã hóa trên máy.")
                     .setPositiveButton("Đóng", null)
                     .show()));
-    settingsDetail = true;
-    toolbar.setTitle("Kết nối AI");
-    settingsBack();
     EditText key = field("Key AI Studio", "");
     key.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
     key.setTypeface(
         android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.NORMAL));
     f.addView(key);
-    dialog(
-        "Bắt đầu",
-        f,
-        "Lưu",
-        () -> {
-          mutate(
-              () -> {
-                Ledger.put(ledger.data, "apiKey", GoogleAi.normalizeKey(key.getText().toString()));
-                Ledger.put(ledger.data, "onboarded", true);
-              });
+    ScrollView scroll = new ScrollView(this);
+    scroll.addView(f);
+    AlertDialog setup =
+        new MaterialAlertDialogBuilder(this)
+            .setTitle("Bắt đầu")
+            .setView(scroll)
+            .setPositiveButton("Lưu key", null)
+            .setNegativeButton("Dùng offline", null)
+            .create();
+    setup.setOnShowListener(
+        dialog -> {
+          setup
+              .getButton(AlertDialog.BUTTON_POSITIVE)
+              .setOnClickListener(v -> finishOnboarding(setup, key.getText().toString()));
+          setup
+              .getButton(AlertDialog.BUTTON_NEGATIVE)
+              .setOnClickListener(v -> finishOnboarding(setup, ""));
         });
+    setup.show();
+  }
+
+  private void finishOnboarding(AlertDialog setup, String key) {
+    try {
+      mutate(
+          () -> {
+            Ledger.put(ledger.data, "apiKey", GoogleAi.normalizeKey(key));
+            Ledger.put(ledger.data, "onboarded", true);
+          });
+      setup.dismiss();
+      openOverview();
+    } catch (Exception e) {
+      error(e);
+    }
   }
 
   private MaterialCardView card(LinearLayout parent, boolean accent) {
@@ -480,6 +505,14 @@ public class MainActivity extends AppCompatActivity {
       connectionDraftSaver.run();
     }
     screen("Chat", 1);
+    toolbar.setNavigationIcon(R.drawable.ic_arrow_back);
+    toolbar.setNavigationIconTint(color(com.google.android.material.R.attr.colorOnSurface));
+    toolbar.setNavigationContentDescription("Quay lại Tổng quan");
+    toolbar.setNavigationOnClickListener(
+        v -> {
+          chatDraft = input.getText().toString();
+          openOverview();
+        });
     body.removeAllViews();
     ScrollView scroll = new ScrollView(this);
     scroll.setFillViewport(true);
@@ -488,23 +521,22 @@ public class MainActivity extends AppCompatActivity {
     chatList.setPadding(dp(16), dp(16), dp(16), dp(16));
     scroll.addView(chatList);
     body.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
-    if (ledger.array("chat").length() == 0) {
-      TextView heading = text("Ghi lại hôm nay.", 30);
-      heading.setTypeface(
-          android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL));
-      LinearLayout.LayoutParams hp = new LinearLayout.LayoutParams(-1, -2);
-      hp.topMargin = dp(56);
-      chatList.addView(heading, hp);
-      TextView example = text("Ăn sáng 45k tiền mặt", 16);
-      example.setTextColor(color(com.google.android.material.R.attr.colorOnSurfaceVariant));
-      chatList.addView(example);
-      if (ledger.data.optString("apiKey").isBlank())
-        chatList.addView(button("Kết nối AI Studio", this::settings));
-    }
     for (int i = 0; i < ledger.array("chat").length(); i++)
       bubble(ledger.array("chat").optJSONObject(i));
-    if (ledger.data.has("pending"))
-      chatList.addView(button("Xem đề xuất chờ xác nhận", this::confirmPending));
+    JSONObject pending = ledger.data.optJSONObject("pending");
+    if (pending != null) {
+      JSONArray actions = pending.optJSONArray("actions");
+      if (actions != null && actions.length() > 0) {
+        JSONObject first = actions.optJSONObject(0);
+        String summary =
+            actions.length() == 1 && first != null
+                ? Ledger.typeLabel(first.optString("type"))
+                    + " · "
+                    + Ledger.money(first.optLong("amount"))
+                : actions.length() + " giao dịch";
+        listRow(chatList, summary, "Chờ xác nhận", "Xem lại", this::confirmPending);
+      }
+    }
     if (busy) {
       TextView waiting = text("Trợ lý đang suy nghĩ…", 14);
       chatList.addView(waiting);
@@ -520,7 +552,23 @@ public class MainActivity extends AppCompatActivity {
                 send();
               }));
     LinearLayout outer = new LinearLayout(this);
-    outer.setPadding(dp(16), dp(8), dp(16), dp(12));
+    outer.setOrientation(LinearLayout.VERTICAL);
+    outer.setPadding(dp(12), 0, dp(12), dp(8));
+    if (ledger.array("chat").length() == 0 && pending == null) {
+      Button example =
+          button(
+              "Thử: Ăn sáng 45k",
+              () -> {
+                input.setText("Chi 45k cash ăn sáng");
+                input.setSelection(input.length());
+                input.requestFocus();
+                ((android.view.inputmethod.InputMethodManager)
+                        getSystemService(INPUT_METHOD_SERVICE))
+                    .showSoftInput(
+                        input, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);
+              });
+      outer.addView(example, new LinearLayout.LayoutParams(-2, -2));
+    }
     LinearLayout composer = new LinearLayout(this);
     composer.setGravity(Gravity.CENTER_VERTICAL);
     composer.setPadding(dp(4), dp(4), dp(4), dp(4));
@@ -529,31 +577,21 @@ public class MainActivity extends AppCompatActivity {
     box.setCornerRadius(dp(28));
     box.setColor(color(com.google.android.material.R.attr.colorSurfaceContainerLow));
     composer.setBackground(box);
-    MaterialButton more =
-        iconButton(
-            "Thêm",
-            R.drawable.ic_add,
-            () -> {
-              PopupMenu menu = new PopupMenu(this, outer);
-              String[] labels = {"Ghi nhanh", "Xóa hội thoại"};
-              for (String label : labels) menu.getMenu().add(label);
-              menu.setOnMenuItemClickListener(
-                  item -> {
-                    switch (item.getTitle().toString()) {
-                      case "Ghi nhanh":
-                        quickEntry(null);
-                        break;
-                      default:
-                        mutate(() -> ChatHistory.clear(ledger));
-                        lastFailed = "";
-                        showChat();
-                    }
-                    return true;
-                  });
-              menu.show();
-            });
-    composer.addView(more, new LinearLayout.LayoutParams(dp(48), dp(48)));
-    input = field("Ghi một khoản…", chatDraft);
+    MaterialButton quick = iconButton("Ghi nhanh", R.drawable.ic_add, () -> quickEntry(null));
+    composer.addView(quick, new LinearLayout.LayoutParams(dp(48), dp(48)));
+    toolbar.getMenu().clear();
+    if (ledger.array("chat").length() > 0)
+      toolbar
+          .getMenu()
+          .add("Xóa hội thoại")
+          .setOnMenuItemClickListener(
+              item -> {
+                mutate(() -> ChatHistory.clear(ledger));
+                lastFailed = "";
+                showChat();
+                return true;
+              });
+    input = field("Nhập khoản thu hoặc chi…", chatDraft);
     input.setBackground(null);
     input.setPadding(dp(8), dp(8), dp(8), dp(8));
     input.setMinHeight(dp(48));
@@ -575,7 +613,7 @@ public class MainActivity extends AppCompatActivity {
     composer.addView(send, new LinearLayout.LayoutParams(dp(48), dp(48)));
     outer.addView(composer, new LinearLayout.LayoutParams(-1, -2));
     body.addView(outer);
-    scroll.post(() -> scroll.fullScroll(View.FOCUS_DOWN));
+    if (ledger.array("chat").length() > 0) scroll.post(() -> scroll.fullScroll(View.FOCUS_DOWN));
   }
 
   private void chat(String role, String value) {
@@ -615,6 +653,7 @@ public class MainActivity extends AppCompatActivity {
               names,
               (d, w) -> {
                 JSONObject p = periods.optJSONObject(w);
+                financeReport = false;
                 showReport(
                     LocalDate.parse(p.optString("start")), LocalDate.parse(p.optString("end")));
               })
@@ -792,33 +831,31 @@ public class MainActivity extends AppCompatActivity {
     ScrollView scroll = new ScrollView(this);
     LinearLayout f = form();
     scroll.addView(f);
-    f.addView(text("Kiểm tra trước khi ghi", 24));
-    f.addView(text("Sổ và số dư chỉ thay đổi sau khi bạn xác nhận.", 14));
+    f.addView(sectionText("Xác nhận giao dịch", 24, false));
     for (int i = 0; i < actions.length(); i++) {
       JSONObject a = actions.optJSONObject(i);
       MaterialCardView receipt = card(f, false);
       LinearLayout content = form();
       receipt.addView(content);
-      content.addView(text(Ledger.typeLabel(a.optString("type")), 14));
-      TextView value = text(Ledger.money(a.optLong("amount")), 28);
+      content.addView(sectionText(Ledger.typeLabel(a.optString("type")), 14, true));
+      TextView value = sectionText(Ledger.money(a.optLong("amount")), 32, false);
       value.setTypeface(null, android.graphics.Typeface.BOLD);
       content.addView(value);
-      content.addView(
-          text(
-              "Nguồn: "
-                  + a.optString("account")
-                  + (a.optString("to").isBlank() ? "" : " → " + a.optString("to"))
-                  + "\n"
-                  + a.optString("category")
-                  + " · "
-                  + a.optString("date", Ledger.today())
-                  + "\n"
-                  + a.optString("note")
-                  + (a.optLong("fee") > 0 ? "\nPhí " + Ledger.money(a.optLong("fee")) : "")
-                  + (a.optString("person").isEmpty() ? "" : "\nĐối tượng: " + a.optString("person"))
-                  + (a.optString("debtId").isEmpty() ? "" : "\nKhoản nợ: " + a.optString("debtId"))
-                  + (a.optString("due").isEmpty() ? "" : "\nHạn: " + a.optString("due")),
-              14));
+      String from = accountLabel(a.optString("account"));
+      String to = accountLabel(a.optString("to"));
+      String route = to.isBlank() ? from : from + " → " + to;
+      String date = dateLabel(a.optString("date", Ledger.today()));
+      String category = a.optString("category");
+      receiptDetail(content, route);
+      receiptDetail(content, category.isBlank() ? date : category + " · " + date);
+      receiptDetail(content, a.optString("note"));
+      if (a.optLong("fee") > 0) receiptDetail(content, "Phí " + Ledger.money(a.optLong("fee")));
+      if (!a.optString("person").isBlank())
+        receiptDetail(content, "Đối tượng · " + a.optString("person"));
+      if (!a.optString("debtId").isBlank())
+        receiptDetail(content, "Khoản nợ · " + a.optString("debtId"));
+      if (!a.optString("due").isBlank())
+        receiptDetail(content, "Hạn · " + dateLabel(a.optString("due")));
     }
     f.addView(
         button(
@@ -858,6 +895,10 @@ public class MainActivity extends AppCompatActivity {
     sheet.setContentView(scroll);
     sheet.show();
     sheet.getBehavior().setPeekHeight((int) (getResources().getDisplayMetrics().heightPixels * .8));
+  }
+
+  private void receiptDetail(LinearLayout parent, String value) {
+    if (!value.isBlank()) parent.addView(sectionText(value, 14, true));
   }
 
   private void editPending() {
@@ -954,17 +995,7 @@ public class MainActivity extends AppCompatActivity {
       confirmPending();
       return;
     }
-    if (rule != null) {
-      quickEntryForm(rule, "expense");
-      return;
-    }
-    String[] labels = QuickEntry.TYPES.stream().map(Ledger::typeLabel).toArray(String[]::new);
-    new MaterialAlertDialogBuilder(this)
-        .setTitle("Chọn loại ghi chép")
-        .setItems(
-            labels, (dialog, selected) -> quickEntryForm(null, QuickEntry.TYPES.get(selected)))
-        .setNegativeButton("Đóng", null)
-        .show();
+    quickEntryForm(rule, "expense");
   }
 
   private Spinner entryAccounts(
@@ -1005,9 +1036,11 @@ public class MainActivity extends AppCompatActivity {
             .collect(java.util.stream.Collectors.toList());
     Spinner type = spinner(content, "Loại ghi chép", labels);
     type.setSelection(QuickEntry.TYPES.indexOf(initialType));
-    EditText amount =
-        field("Số tiền: 50k / 1tr5", rule == null ? "" : String.valueOf(rule.optLong("amount")));
-    content.addView(amount);
+    EditText amount = field("0 ₫", rule == null ? "" : String.valueOf(rule.optLong("amount")));
+    amount.setTextSize(32);
+    amount.setGravity(Gravity.CENTER);
+    amount.setMinHeight(dp(72));
+    content.addView(amount, 0);
     LinearLayout specific = new LinearLayout(this);
     specific.setOrientation(LinearLayout.VERTICAL);
     content.addView(specific);
@@ -1118,7 +1151,7 @@ public class MainActivity extends AppCompatActivity {
                   "note",
                   note.getText().toString(),
                   "date",
-                  date.getText().toString());
+                  date.getTag().toString());
           values.forEach((key, value) -> Ledger.put(fields, key, value.get()));
           if (fields.optString("account").isEmpty()
               || List.of("transfer", "card_payment").contains(selected)
@@ -1180,54 +1213,16 @@ public class MainActivity extends AppCompatActivity {
     LinearLayout f = form();
     scroll.addView(f);
     body.addView(scroll);
+    List<JSONObject> funds = new ArrayList<>();
+    List<JSONObject> cards = new ArrayList<>();
     for (int i = 0; i < ledger.array("accounts").length(); i++) {
       JSONObject account = ledger.array("accounts").optJSONObject(i);
       if (account.optBoolean("archived")) continue;
-      LinearLayout row = new LinearLayout(this);
-      row.setGravity(Gravity.CENTER_VERTICAL);
-      row.setPadding(0, dp(12), 0, dp(12));
-      LinearLayout labels = new LinearLayout(this);
-      labels.setOrientation(LinearLayout.VERTICAL);
-      TextView name = text(account.optString("name"), 17);
-      name.setMaxLines(1);
-      name.setEllipsize(android.text.TextUtils.TruncateAt.END);
-      name.setTypeface(
-          android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL));
-      labels.addView(name);
-      TextView note =
-          text(
-              account.optString("type").equals("card")
-                  ? "Dư nợ"
-                  : account.has("checkpoint") ? "Đã đối soát" : "Biến động",
-              12);
-      note.setTextColor(color(com.google.android.material.R.attr.colorOnSurfaceVariant));
-      labels.addView(note);
-      row.addView(labels, new LinearLayout.LayoutParams(0, -2, 1));
-      TextView amount = text(Ledger.money(ledger.balance(account.optString("id"))), 18);
-      amount.setTypeface(
-          android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL));
-      row.addView(amount);
-      MaterialButton options =
-          iconButton(
-              "Tùy chọn " + account.optString("name"),
-              R.drawable.ic_more_vert,
-              () -> {
-                PopupMenu menu = new PopupMenu(this, row);
-                menu.getMenu().add("Đối soát");
-                menu.getMenu().add("Xóa nguồn tiền");
-                if (account.optString("type").equals("card")) menu.getMenu().add("Sao kê");
-                menu.setOnMenuItemClickListener(
-                    item -> {
-                      if (item.getTitle().equals("Sao kê")) cardStatement(account);
-                      else if (item.getTitle().equals("Xóa nguồn tiền")) removeAccount(account);
-                      else reconcileAccount(account);
-                      return true;
-                    });
-                menu.show();
-              });
-      row.addView(options, new LinearLayout.LayoutParams(dp(48), dp(48)));
-      f.addView(row);
+      (account.optString("type").equals("card") ? cards : funds).add(account);
     }
+    accountGroup(f, "Tiền của bạn", funds);
+    accountGroup(f, "Thẻ tín dụng", cards);
+    if (funds.isEmpty() && cards.isEmpty()) f.addView(sectionText("Chưa có nguồn tiền", 16, true));
     f.addView(button("Thêm nguồn tiền", this::addAccountDialog));
     boolean archived = false;
     for (int i = 0; i < ledger.array("accounts").length(); i++)
@@ -1253,6 +1248,64 @@ public class MainActivity extends AppCompatActivity {
                 }
                 dialog("Nguồn đã ngừng sử dụng", list, "Đóng", () -> {});
               }));
+  }
+
+  private void accountGroup(LinearLayout parent, String title, List<JSONObject> accounts) {
+    if (accounts.isEmpty()) return;
+    TextView heading = sectionText(title, 18, false);
+    heading.setTypeface(null, android.graphics.Typeface.BOLD);
+    ViewCompat.setAccessibilityHeading(heading, true);
+    parent.addView(heading);
+    for (JSONObject account : accounts) {
+      boolean credit = account.optString("type").equals("card");
+      String name = account.optString("name");
+      MaterialCardView surface = card(parent, true);
+      LinearLayout row = new LinearLayout(this);
+      row.setGravity(Gravity.CENTER_VERTICAL);
+      row.setPadding(dp(16), dp(10), dp(4), dp(10));
+      surface.addView(row);
+      ImageView icon = new ImageView(this);
+      icon.setImageResource(
+          credit ? R.drawable.ic_credit_card : R.drawable.ic_account_balance_wallet_outline);
+      icon.setImageTintList(
+          android.content.res.ColorStateList.valueOf(
+              color(com.google.android.material.R.attr.colorPrimary)));
+      icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+      row.addView(icon, new LinearLayout.LayoutParams(dp(24), dp(24)));
+      LinearLayout labels = new LinearLayout(this);
+      labels.setOrientation(LinearLayout.VERTICAL);
+      labels.setPadding(dp(12), 0, 0, 0);
+      row.addView(labels, new LinearLayout.LayoutParams(0, -2, 1));
+      TextView accountName = sectionText(name, 15, false);
+      accountName.setTypeface(null, android.graphics.Typeface.BOLD);
+      labels.addView(accountName);
+      String state =
+          credit ? "Dư nợ" : account.has("checkpoint") ? "Số dư" : "Biến động · Chưa đối soát";
+      labels.addView(sectionText(state, 12, true));
+      TextView value =
+          sectionText(Ledger.money(ledger.balance(account.optString("id"))), 22, false);
+      value.setTypeface(null, android.graphics.Typeface.BOLD);
+      labels.addView(value);
+      MaterialButton options =
+          iconButton(
+              "Tùy chọn " + name,
+              R.drawable.ic_more_vert,
+              () -> {
+                PopupMenu menu = new PopupMenu(this, row.getChildAt(row.getChildCount() - 1));
+                menu.getMenu().add("Đối soát");
+                if (credit) menu.getMenu().add("Sao kê");
+                menu.getMenu().add("Xóa nguồn tiền");
+                menu.setOnMenuItemClickListener(
+                    item -> {
+                      if (item.getTitle().equals("Sao kê")) cardStatement(account);
+                      else if (item.getTitle().equals("Xóa nguồn tiền")) removeAccount(account);
+                      else reconcileAccount(account);
+                      return true;
+                    });
+                menu.show();
+              });
+      row.addView(options, new LinearLayout.LayoutParams(dp(48), dp(48)));
+    }
   }
 
   private void removeAccount(JSONObject account) {
@@ -1411,24 +1464,51 @@ public class MainActivity extends AppCompatActivity {
         .show();
   }
 
-  private TextView compactText(String value, int size, boolean secondary) {
+  private TextView sectionText(String value, int size, boolean secondary) {
     TextView view = text(value, size);
     view.setPadding(0, 0, 0, 0);
     view.setTextIsSelectable(false);
     if (secondary)
       view.setTextColor(color(com.google.android.material.R.attr.colorOnSurfaceVariant));
+    return view;
+  }
+
+  private TextView compactText(String value, int size, boolean secondary) {
+    TextView view = sectionText(value, size, secondary);
     view.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
     return view;
   }
 
   private void listRow(
       LinearLayout parent, String title, String subtitle, String amount, Runnable action) {
+    detailRow(parent, title, subtitle, amount, null, false, action);
+  }
+
+  private void compactDetailRow(
+      LinearLayout parent,
+      String title,
+      String subtitle,
+      String amount,
+      ProgressBar progress,
+      Runnable action) {
+    detailRow(parent, title, subtitle, amount, progress, true, action);
+  }
+
+  private void detailRow(
+      LinearLayout parent,
+      String title,
+      String subtitle,
+      String amount,
+      ProgressBar progress,
+      boolean compact,
+      Runnable action) {
     LinearLayout row = new LinearLayout(this);
     boolean stacked = getResources().getConfiguration().fontScale > 1.3f;
     row.setOrientation(stacked ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL);
     row.setGravity(Gravity.CENTER_VERTICAL);
-    row.setPadding(dp(8), dp(12), dp(8), dp(12));
-    row.setMinimumHeight(dp(72));
+    int padding = compact ? 6 : 12;
+    row.setPadding(dp(8), dp(padding), dp(8), dp(padding));
+    row.setMinimumHeight(dp(compact ? 48 : 72));
     LinearLayout labels = new LinearLayout(this);
     labels.setOrientation(LinearLayout.VERTICAL);
     TextView heading = compactText(title, 16, false);
@@ -1439,7 +1519,7 @@ public class MainActivity extends AppCompatActivity {
     supporting.setMaxLines(2);
     supporting.setEllipsize(android.text.TextUtils.TruncateAt.END);
     labels.addView(heading, new LinearLayout.LayoutParams(-1, -2));
-    labels.addView(supporting, new LinearLayout.LayoutParams(-1, -2));
+    if (!subtitle.isBlank()) labels.addView(supporting, new LinearLayout.LayoutParams(-1, -2));
     row.addView(
         labels,
         stacked ? new LinearLayout.LayoutParams(-1, -2) : new LinearLayout.LayoutParams(0, -2, 1));
@@ -1449,7 +1529,7 @@ public class MainActivity extends AppCompatActivity {
     row.addView(value, new LinearLayout.LayoutParams(-2, -2));
     if (!stacked) {
       ImageView more = new ImageView(this);
-      more.setImageResource(R.drawable.ic_more_vert);
+      more.setImageResource(R.drawable.ic_chevron_end);
       more.setImageTintList(
           android.content.res.ColorStateList.valueOf(
               color(com.google.android.material.R.attr.colorOnSurfaceVariant)));
@@ -1457,14 +1537,27 @@ public class MainActivity extends AppCompatActivity {
       more.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
       row.addView(more, new LinearLayout.LayoutParams(dp(28), dp(20)));
     }
+    LinearLayout target = row;
+    if (progress != null) {
+      target = new LinearLayout(this);
+      target.setOrientation(LinearLayout.VERTICAL);
+      target.addView(row, new LinearLayout.LayoutParams(-1, -2));
+      LinearLayout.LayoutParams barSize = new LinearLayout.LayoutParams(-1, dp(4));
+      barSize.setMargins(dp(8), 0, dp(8), dp(8));
+      target.addView(progress, barSize);
+    }
     android.util.TypedValue background = new android.util.TypedValue();
     getTheme().resolveAttribute(android.R.attr.selectableItemBackground, background, true);
-    row.setBackgroundResource(background.resourceId);
-    row.setFocusable(true);
-    row.setClickable(true);
-    row.setContentDescription(title + ", " + subtitle + ", " + amount + ". Mở chi tiết");
+    target.setBackgroundResource(background.resourceId);
+    target.setFocusable(true);
+    target.setClickable(true);
+    target.setContentDescription(
+        title
+            + (subtitle.isBlank() ? "" : ", " + subtitle)
+            + (amount.isBlank() ? "" : ", " + amount)
+            + ". Mở chi tiết");
     ViewCompat.setAccessibilityDelegate(
-        row,
+        target,
         new androidx.core.view.AccessibilityDelegateCompat() {
           @Override
           public void onInitializeAccessibilityNodeInfo(
@@ -1473,7 +1566,7 @@ public class MainActivity extends AppCompatActivity {
             info.setClassName(Button.class.getName());
           }
         });
-    row.setOnClickListener(
+    target.setOnClickListener(
         v -> {
           try {
             action.run();
@@ -1481,7 +1574,7 @@ public class MainActivity extends AppCompatActivity {
             error(e);
           }
         });
-    parent.addView(row, new LinearLayout.LayoutParams(-1, -2));
+    parent.addView(target, new LinearLayout.LayoutParams(-1, -2));
     View divider = new View(this);
     divider.setBackgroundColor(color(com.google.android.material.R.attr.colorOutlineVariant));
     parent.addView(divider, new LinearLayout.LayoutParams(-1, dp(1)));
@@ -1517,6 +1610,12 @@ public class MainActivity extends AppCompatActivity {
     body.setLayoutParams(size);
     if (currentScreen.equals("Giao dịch")) history();
     else if (currentScreen.equals("Nhắc hạn")) rules();
+    else if (currentScreen.equals("Tổng quan")) openOverview();
+    else if (currentScreen.equals("Phân tích") || currentScreen.equals("Ngân sách"))
+      showReport(reportStart, reportEnd);
+    ViewGroup.LayoutParams navSize = navigation.getLayoutParams();
+    navSize.width = navigationWidth();
+    navigation.setLayoutParams(navSize);
   }
 
   private void history() {
@@ -1592,7 +1691,14 @@ public class MainActivity extends AppCompatActivity {
             list,
             title,
             detail,
-            Ledger.money(event.optLong("amount")),
+            (event.optBoolean("active", true)
+                    ? switch (event.optString("type")) {
+                      case "income", "card_refund" -> "+";
+                      case "expense", "card_purchase" -> "−";
+                      default -> "";
+                    }
+                    : "")
+                + Ledger.money(event.optLong("amount")),
             () -> transactionDetails(event));
       }
     }
@@ -1603,6 +1709,10 @@ public class MainActivity extends AppCompatActivity {
       controls.removeView(filters);
       filters.setContentDescription("Bộ lọc: " + filter);
       pager.addView(filters, new LinearLayout.LayoutParams(-2, -2));
+    }
+    if (pages.size() <= 1) {
+      if (shortViewport()) body.addView(pager);
+      return;
     }
     Button previous =
         centeredButton(
@@ -1640,33 +1750,32 @@ public class MainActivity extends AppCompatActivity {
 
   private void transactionDetails(JSONObject event) {
     LinearLayout details = form();
-    details.addView(
-        text(
-            "Ngày: "
-                + dateLabel(event.optString("date"))
-                + "\nNghiệp vụ: "
-                + Ledger.typeLabel(event.optString("type"))
-                + "\nSố tiền: "
-                + Ledger.money(event.optLong("amount"))
-                + "\nNguồn: "
-                + accountLabel(event.optString("account"))
-                + (event.optString("to").isEmpty()
-                    ? ""
-                    : "\nĐích: " + accountLabel(event.optString("to")))
-                + "\nPhí: "
-                + Ledger.money(event.optLong("fee"))
-                + "\nNội dung: "
-                + event.optString("note")
-                + "\nDanh mục: "
-                + event.optString("category")
-                + (event.optString("debtId").isEmpty()
-                    ? ""
-                    : "\nKhoản nợ: " + event.optString("debtId"))
-                + "\nTrạng thái: "
-                + (event.optBoolean("active", true) ? "Đã ghi" : "Đã hoàn tác")
-                + "\nMã giao dịch: "
-                + event.optString("id"),
-            15));
+    String type = Ledger.typeLabel(event.optString("type"));
+    String note = event.optString("note");
+    MaterialCardView receipt = card(details, true);
+    LinearLayout heading = new LinearLayout(this);
+    heading.setOrientation(LinearLayout.VERTICAL);
+    heading.setPadding(dp(14), dp(12), dp(14), dp(12));
+    receipt.addView(heading);
+    heading.addView(
+        sectionText(
+            type + " · " + (event.optBoolean("active", true) ? "Đã ghi" : "Đã hoàn tác"),
+            13,
+            true));
+    TextView amount = sectionText(Ledger.money(event.optLong("amount")), 28, false);
+    amount.setTypeface(null, android.graphics.Typeface.BOLD);
+    heading.addView(amount);
+    receiptDetail(heading, dateLabel(event.optString("date")));
+    String from = accountLabel(event.optString("account"));
+    String to = accountLabel(event.optString("to"));
+    receiptDetail(details, to.isBlank() ? from : from + " → " + to);
+    receiptDetail(details, event.optString("category"));
+    if (!note.isBlank()) details.addView(sectionText(note, 16, false));
+    if (event.optLong("fee") > 0)
+      receiptDetail(details, "Phí · " + Ledger.money(event.optLong("fee")));
+    if (!event.optString("debtId").isBlank())
+      details.addView(text("Khoản nợ · " + event.optString("debtId"), 13));
+    details.addView(text("Mã giao dịch · " + event.optString("id"), 12));
     ScrollView scroll = new ScrollView(this);
     scroll.addView(details);
     MaterialAlertDialogBuilder builder =
@@ -1680,15 +1789,21 @@ public class MainActivity extends AppCompatActivity {
   }
 
   private EditText dateFilterField(String label, LocalDate initial) {
-    EditText field = field(label, initial.toString());
+    java.time.format.DateTimeFormatter format =
+        java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy");
+    EditText field = field(label, initial.format(format));
+    field.setTag(initial);
     field.setFocusable(false);
     field.setOnClickListener(
         v -> {
-          LocalDate selected = LocalDate.parse(field.getText().toString());
+          LocalDate selected = (LocalDate) field.getTag();
           new DatePickerDialog(
                   this,
-                  (picker, year, month, day) ->
-                      field.setText(LocalDate.of(year, month + 1, day).toString()),
+                  (picker, year, month, day) -> {
+                    LocalDate chosen = LocalDate.of(year, month + 1, day);
+                    field.setTag(chosen);
+                    field.setText(chosen.format(format));
+                  },
                   selected.getYear(),
                   selected.getMonthValue() - 1,
                   selected.getDayOfMonth())
@@ -1779,8 +1894,8 @@ public class MainActivity extends AppCompatActivity {
               end = now;
               break;
             case "Tùy chọn":
-              start = LocalDate.parse(from.getText().toString());
-              end = LocalDate.parse(until.getText().toString());
+              start = (LocalDate) from.getTag();
+              end = (LocalDate) until.getTag();
               if (start.isAfter(end))
                 throw new IllegalArgumentException(
                     "Ngày bắt đầu phải trước hoặc bằng ngày kết thúc.");
@@ -1797,140 +1912,583 @@ public class MainActivity extends AppCompatActivity {
         });
   }
 
-  private void reportDialog() {
-    LinearLayout f = form();
+  private void reportDialog(LocalDate currentStart, LocalDate currentEnd) {
     LocalDate now = LocalDate.now();
-    Spinner period =
-        spinner(
-            f, "Kỳ báo cáo", List.of("Tháng này", "Hôm nay", "Tuần này", "Năm này", "Tùy chọn"));
-    EditText start = field("Từ YYYY-MM-DD", now.withDayOfMonth(1).toString()),
-        end = field("Đến YYYY-MM-DD", now.toString());
-    LinearLayout custom = form();
-    custom.addView(start);
-    custom.addView(end);
-    f.addView(custom);
-    custom.setVisibility(View.GONE);
-    period.setOnItemSelectedListener(
-        new AdapterView.OnItemSelectedListener() {
-          public void onItemSelected(AdapterView<?> p, View v, int position, long id) {
-            custom.setVisibility(position == 4 ? View.VISIBLE : View.GONE);
-          }
+    LocalDate month = now.withDayOfMonth(1);
+    LocalDate week =
+        now.with(java.time.temporal.TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+    LocalDate year = now.withDayOfYear(1);
+    LocalDate[] starts = {month, week, now, year};
+    String[] labels = {"Tháng này", "Tuần này", "Hôm nay", "Năm này", "Tùy chọn"};
+    int selected = labels.length - 1;
+    if (currentEnd.equals(now)) {
+      for (int i = 0; i < starts.length; i++) {
+        if (starts[i].equals(currentStart)) {
+          selected = i;
+          break;
+        }
+      }
+    }
+    new MaterialAlertDialogBuilder(this)
+        .setTitle("Kỳ báo cáo")
+        .setSingleChoiceItems(
+            labels,
+            selected,
+            (picker, option) -> {
+              picker.dismiss();
+              if (option < starts.length) {
+                showReport(starts[option], now);
+              } else {
+                LinearLayout fields = form();
+                EditText start = dateFilterField("Từ ngày", currentStart);
+                EditText end = dateFilterField("Đến ngày", currentEnd);
+                fields.addView(start);
+                fields.addView(end);
+                dialog(
+                    "Chọn khoảng ngày",
+                    fields,
+                    "Xem",
+                    () -> {
+                      LocalDate from = (LocalDate) start.getTag();
+                      LocalDate until = (LocalDate) end.getTag();
+                      if (until.isBefore(from))
+                        throw new IllegalArgumentException("Ngày cuối trước ngày đầu");
+                      showReport(from, until);
+                    });
+              }
+            })
+        .setNegativeButton("Đóng", null)
+        .show();
+  }
 
-          public void onNothingSelected(AdapterView<?> p) {}
-        });
-    dialog(
-        "Báo cáo",
-        f,
-        "Xem",
-        () -> {
-          LocalDate s =
-              switch (period.getSelectedItemPosition()) {
-                case 1 -> now;
-                case 2 ->
-                    now.with(java.time.temporal.TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
-                case 3 -> now.withDayOfYear(1);
-                case 4 -> LocalDate.parse(start.getText().toString());
-                default -> now.withDayOfMonth(1);
-              };
-          LocalDate e =
-              period.getSelectedItemPosition() == 4
-                  ? LocalDate.parse(end.getText().toString())
-                  : now;
-          if (e.isBefore(s)) throw new IllegalArgumentException("Ngày cuối trước ngày đầu");
-          showReport(s, e);
+  private android.graphics.drawable.Drawable navIcon(int id) {
+    int icon =
+        switch (id) {
+          case 1 -> R.drawable.ic_chat_outline;
+          case 2 -> R.drawable.ic_ronas_grid;
+          case 6 -> R.drawable.ic_bar_chart_outline;
+          default -> R.drawable.ic_settings_outline;
+        };
+    android.graphics.drawable.Drawable normal = getDrawable(icon).mutate();
+    normal.setTint(getColor(R.color.app_on_surface));
+    android.graphics.drawable.Drawable selected = getDrawable(icon).mutate();
+    selected.setTint(getColor(R.color.wallet_navigation_selected_icon));
+    android.graphics.drawable.InsetDrawable foreground =
+        new android.graphics.drawable.InsetDrawable(selected, dp(10));
+    android.graphics.drawable.LayerDrawable circle =
+        new android.graphics.drawable.LayerDrawable(
+            new android.graphics.drawable.Drawable[] {
+              walletShape(getColor(R.color.wallet_navigation_selected), 22), foreground
+            });
+    android.graphics.drawable.StateListDrawable states =
+        new android.graphics.drawable.StateListDrawable();
+    states.addState(new int[] {android.R.attr.state_checked}, circle);
+    states.addState(new int[] {}, new android.graphics.drawable.InsetDrawable(normal, dp(10)));
+    return states;
+  }
+
+  private int navigationWidth() {
+    return Math.min(getResources().getDisplayMetrics().widthPixels - dp(32), dp(240));
+  }
+
+  private void toolbarAction(String label, int icon, Runnable action) {
+    MenuItem item = toolbar.getMenu().add(label);
+    item.setIcon(icon);
+    item.setIconTintList(
+        android.content.res.ColorStateList.valueOf(getColor(R.color.app_on_surface)));
+    item.setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS);
+    item.setOnMenuItemClickListener(
+        selected -> {
+          action.run();
+          return true;
         });
   }
 
-  private void showReport(LocalDate start, LocalDate end) {
-    screen("Báo cáo", 2);
-    body.removeAllViews();
+  private LinearLayout scrollPage(int top) {
     ScrollView scroll = new ScrollView(this);
-    LinearLayout f = form();
-    scroll.addView(f);
-    body.addView(scroll);
-    f.addView(button("Kỳ xem · " + start + " → " + end, this::reportDialog));
-    com.google.android.material.tabs.TabLayout tabs =
-        new com.google.android.material.tabs.TabLayout(this);
-    tabs.setTabMode(com.google.android.material.tabs.TabLayout.MODE_FIXED);
-    tabs.addTab(tabs.newTab().setText("Tổng quan"), !financeReport);
-    tabs.addTab(tabs.newTab().setText("Quản lý tài chính"), financeReport);
-    tabs.addOnTabSelectedListener(
-        new com.google.android.material.tabs.TabLayout.OnTabSelectedListener() {
-          public void onTabSelected(com.google.android.material.tabs.TabLayout.Tab tab) {
-            financeReport = tab.getPosition() == 1;
-            showReport(start, end);
-          }
+    scroll.setVerticalScrollBarEnabled(false);
+    LinearLayout content = new LinearLayout(this);
+    content.setOrientation(LinearLayout.VERTICAL);
+    content.setPadding(dp(16), dp(top), dp(16), dp(12));
+    scroll.addView(content);
+    body.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
+    return content;
+  }
 
-          public void onTabUnselected(com.google.android.material.tabs.TabLayout.Tab tab) {}
+  private void openOverview() {
+    screen("Tổng quan", 2);
+    body.removeAllViews();
+    walletGreeting();
+    toolbarAction("Nhắc hạn", R.drawable.ic_notification, this::rules);
+    LinearLayout content = scrollPage(8);
+    balanceCard(content);
+    LinearLayout actions = new LinearLayout(this);
+    actions.setPadding(0, dp(12), 0, dp(12));
+    dashboardAction(
+        actions, "Chuyển", R.drawable.ic_transfer_out, false, () -> dashboardEntry("transfer"));
+    dashboardAction(
+        actions, "Nhận", R.drawable.ic_transfer_in, false, () -> dashboardEntry("income"));
+    dashboardAction(actions, "Ghi khoản", R.drawable.ic_add, true, () -> dashboardEntry("expense"));
+    content.addView(actions);
+    LinearLayout section = new LinearLayout(this);
+    section.setGravity(Gravity.CENTER_VERTICAL);
+    TextView heading = sectionText("Giao dịch gần đây", 22, false);
+    heading.setTypeface(urbanist, android.graphics.Typeface.BOLD);
+    ViewCompat.setAccessibilityHeading(heading, true);
+    section.addView(heading, new LinearLayout.LayoutParams(0, -2, 1));
+    Button all = centeredButton("Xem tất cả", this::history);
+    all.setTextColor(getColor(R.color.app_secondary_text));
+    section.addView(all, new LinearLayout.LayoutParams(-2, -2));
+    content.addView(section);
+    List<JSONObject> events = new ArrayList<>();
+    for (int i = 0; i < ledger.array("events").length(); i++) {
+      JSONObject event = ledger.array("events").optJSONObject(i);
+      if (event == null || !event.optBoolean("active", true)) continue;
+      if (!dashboardAccount.isBlank()
+          && !dashboardAccount.equals(event.optString("account"))
+          && !dashboardAccount.equals(event.optString("to"))) continue;
+      events.add(event);
+    }
+    events.sort(
+        Comparator.comparing((JSONObject e) -> e.optString("date"))
+            .thenComparing(e -> e.optString("createdAt"))
+            .reversed());
+    for (int i = 0; i < Math.min(5, events.size()); i++) recentRow(content, events.get(i));
+    if (events.isEmpty()) content.addView(sectionText("Chưa có giao dịch.", 14, true));
+  }
 
-          public void onTabReselected(com.google.android.material.tabs.TabLayout.Tab tab) {}
-        });
-    f.addView(
-        tabs,
-        new LinearLayout.LayoutParams(
-            -1,
-            dp((int) Math.ceil(48 * Math.max(1f, getResources().getConfiguration().fontScale)))));
-    JSONObject totals = ledger.totals(start, end);
-    if (financeReport) {
-      financeReport(f, start, end, totals);
-      return;
+  private void walletGreeting() {
+    toolbar.setTitle(null);
+    LinearLayout row = new LinearLayout(this);
+    row.setGravity(Gravity.CENTER_VERTICAL);
+    ImageView avatar = new ImageView(this);
+    avatar.setImageResource(R.drawable.ic_ronas_profile);
+    avatar.setImageTintList(
+        android.content.res.ColorStateList.valueOf(getColor(R.color.app_on_surface)));
+    avatar.setPadding(dp(10), dp(10), dp(10), dp(10));
+    avatar.setBackground(walletShape(getColor(R.color.app_surface_high), 24));
+    avatar.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+    row.addView(avatar, new LinearLayout.LayoutParams(dp(42), dp(42)));
+    LinearLayout copy = new LinearLayout(this);
+    copy.setOrientation(LinearLayout.VERTICAL);
+    copy.setPadding(dp(8), 0, 0, 0);
+    copy.addView(sectionText("Chào bạn,", 13, true));
+    TextView title = sectionText("Ví cá nhân", 18, false);
+    title.setTypeface(urbanist, android.graphics.Typeface.BOLD);
+    copy.addView(title);
+    row.addView(copy);
+    walletGreeting = row;
+    toolbar.addView(
+        row,
+        new androidx.appcompat.widget.Toolbar.LayoutParams(
+            -2, -2, Gravity.START | Gravity.CENTER_VERTICAL));
+  }
+
+  private List<JSONObject> dashboardSources() {
+    List<JSONObject> accounts = new ArrayList<>();
+    for (int i = 0; i < ledger.array("accounts").length(); i++) {
+      JSONObject account = ledger.array("accounts").optJSONObject(i);
+      if (account != null && !account.optBoolean("archived")) accounts.add(account);
     }
-    MaterialCardView summary = card(f, false);
-    LinearLayout content = form();
-    summary.addView(content);
-    content.addView(text("Chi tiêu trong kỳ", 14));
-    TextView spending = text(Ledger.money(totals.optLong("expense")), 30);
-    spending.setTypeface(null, android.graphics.Typeface.BOLD);
-    content.addView(spending);
-    content.addView(text("Thu nhập trong kỳ\n" + Ledger.money(totals.optLong("income")), 14));
-    f.addView(text("Chi tiêu theo danh mục", 18));
-    JSONObject groups = ledger.totals(start, end).optJSONObject("groups");
-    long max = 1;
-    for (Iterator<String> it = groups.keys(); it.hasNext(); )
-      max = Math.max(max, Math.abs(groups.optLong(it.next())));
-    List<String> categories = new ArrayList<>();
-    groups.keys().forEachRemaining(categories::add);
-    categories.sort((a, b) -> Long.compare(groups.optLong(b), groups.optLong(a)));
-    if (categories.isEmpty()) f.addView(text("Chưa có chi tiêu trong kỳ này.", 14));
-    for (String label : categories) {
-      listRow(
-          f,
-          label,
-          "Chạm để xem giao dịch",
-          Ledger.money(groups.optLong(label)),
-          () -> categoryTransactions(start, end, label, 0));
-      ProgressBar bar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
-      bar.setProgressTintList(
-          android.content.res.ColorStateList.valueOf(
-              color(com.google.android.material.R.attr.colorPrimary)));
-      bar.setMax(1000);
-      bar.setProgress((int) Math.min(1000, Math.abs(groups.optLong(label)) * 1000 / max));
-      f.addView(bar);
+    return accounts;
+  }
+
+  private void balanceCard(LinearLayout parent) {
+    List<JSONObject> sources = dashboardSources();
+    JSONObject selected = null;
+    long amount = 0;
+    long movement = 0;
+    int verified = 0;
+    int available = 0;
+    for (JSONObject account : sources) {
+      if (account.optString("id").equals(dashboardAccount)) selected = account;
+      if ("card".equals(account.optString("type"))) continue;
+      available++;
+      long balance = ledger.balance(account.optString("id"));
+      if (account.has("checkpoint")) {
+        amount = Math.addExact(amount, balance);
+        verified++;
+      } else movement = Math.addExact(movement, balance);
     }
-    f.addView(
-        button(
-            "Tùy chọn báo cáo",
+    String label =
+        verified == 0
+            ? "Biến động nguồn tiền"
+            : verified < available ? "Số dư đã đối soát" : "Tổng số dư";
+    if (selected == null) {
+      dashboardAccount = "";
+      if (verified == 0) amount = movement;
+    } else {
+      amount = ledger.balance(dashboardAccount);
+      label =
+          "card".equals(selected.optString("type"))
+              ? "Dư nợ thẻ"
+              : selected.has("checkpoint") ? "Số dư" : "Biến động nguồn tiền";
+    }
+
+    android.widget.FrameLayout frame = new android.widget.FrameLayout(this);
+    frame.setBackground(walletShape(getColor(R.color.balance_card_green), 19));
+    frame.setClipToOutline(true);
+    parent.addView(frame, new LinearLayout.LayoutParams(-1, -2));
+    frame.addView(
+        new RonasVisuals.BalanceGradient(this),
+        new android.widget.FrameLayout.LayoutParams(-1, -1));
+    LinearLayout stack = new LinearLayout(this);
+    stack.setOrientation(LinearLayout.VERTICAL);
+    stack.setPadding(dp(14), dp(12), dp(14), dp(12));
+    stack.setMinimumHeight(dp(190));
+    frame.addView(stack, new android.widget.FrameLayout.LayoutParams(-1, -2));
+    LinearLayout top = new LinearLayout(this);
+    top.setGravity(Gravity.CENTER_VERTICAL);
+    MaterialButton select =
+        (MaterialButton)
+            centeredButton(
+                (selected == null ? "Tất cả nguồn" : selected.optString("name")) + "  ▾",
+                () -> chooseSource(sources));
+    ronasWhiteButton(select);
+    select.setMaxLines(2);
+    top.addView(select, new LinearLayout.LayoutParams(-2, -2));
+    top.addView(new View(this), new LinearLayout.LayoutParams(0, 1, 1));
+    View circles = new RonasVisuals.CardMark(this);
+    circles.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+    top.addView(circles, new LinearLayout.LayoutParams(dp(39), dp(28)));
+    stack.addView(top);
+    View gap = new View(this);
+    gap.setMinimumHeight(dp(30));
+    stack.addView(gap, new LinearLayout.LayoutParams(-1, 0, 1));
+    TextView caption = sectionText(label, 15, false);
+    caption.setTextColor(android.graphics.Color.WHITE);
+    stack.addView(caption);
+    LinearLayout bottom = new LinearLayout(this);
+    bottom.setGravity(Gravity.CENTER_VERTICAL);
+    TextView value = sectionText(hideBalance ? "••••••" : Ledger.money(amount), 35, false);
+    value.setTextColor(android.graphics.Color.WHITE);
+    bottom.addView(value, new LinearLayout.LayoutParams(0, -2, 1));
+    MaterialButton eye =
+        iconButton(
+            hideBalance ? "Hiện số dư" : "Ẩn số dư",
+            hideBalance ? R.drawable.ic_ronas_eye_off : R.drawable.ic_ronas_eye,
             () -> {
-              new MaterialAlertDialogBuilder(this)
-                  .setTitle("Báo cáo")
-                  .setItems(
-                      new String[] {"Xem chi tiết", "Báo cáo định kỳ", "Xuất file văn bản"},
-                      (d, w) -> {
-                        if (w == 0) {
-                          LinearLayout details = form();
-                          details.addView(text(ledger.report(start, end), 15));
-                          dialog("Chi tiết báo cáo", details, "Đóng", () -> {});
-                        } else if (w == 1) reportInbox();
-                        else
-                          exportDocument(
-                              ledger
-                                  .report(start, end)
-                                  .getBytes(java.nio.charset.StandardCharsets.UTF_8),
-                              "text/plain",
-                              "bao-cao-" + end + ".txt");
-                      })
-                  .show();
-            }));
+              hideBalance = !hideBalance;
+              openOverview();
+            });
+    eye.setIconTint(android.content.res.ColorStateList.valueOf(android.graphics.Color.WHITE));
+    bottom.addView(eye, new LinearLayout.LayoutParams(dp(48), dp(48)));
+    stack.addView(bottom);
+  }
+
+  private void chooseSource(List<JSONObject> sources) {
+    List<String> labels = new ArrayList<>();
+    labels.add("Tất cả nguồn");
+    int selected = 0;
+    for (JSONObject account : sources) {
+      if (account.optString("id").equals(dashboardAccount)) selected = labels.size();
+      labels.add(account.optString("name"));
+    }
+    new MaterialAlertDialogBuilder(this)
+        .setTitle("Nguồn tiền")
+        .setSingleChoiceItems(
+            labels.toArray(new String[0]),
+            selected,
+            (dialog, index) -> {
+              dashboardAccount = index == 0 ? "" : sources.get(index - 1).optString("id");
+              dialog.dismiss();
+              openOverview();
+            })
+        .setPositiveButton("Quản lý nguồn", (dialog, option) -> accounts())
+        .setNegativeButton("Đóng", null)
+        .show();
+  }
+
+  private void ronasWhiteButton(MaterialButton button) {
+    button.setInsetTop(dp(5));
+    button.setInsetBottom(dp(5));
+    button.setCornerRadius(dp(24));
+    button.setBackgroundTintList(
+        android.content.res.ColorStateList.valueOf(android.graphics.Color.WHITE));
+    button.setTextColor(getColor(R.color.ronas_dark));
+  }
+
+  private void dashboardAction(
+      LinearLayout parent, String label, int icon, boolean primary, Runnable action) {
+    MaterialButton tile = (MaterialButton) centeredButton(label, action);
+    tile.setIconResource(icon);
+    tile.setIconGravity(MaterialButton.ICON_GRAVITY_TEXT_TOP);
+    tile.setIconSize(dp(22));
+    tile.setIconPadding(dp(5));
+    tile.setTextSize(14);
+    tile.setPadding(dp(3), dp(10), dp(3), dp(10));
+    tile.setCornerRadius(dp(17));
+    tile.setMinHeight(dp(72));
+    int ink = getColor(primary ? R.color.wallet_action_primary_icon : R.color.app_on_surface);
+    tile.setTextColor(ink);
+    tile.setIconTint(android.content.res.ColorStateList.valueOf(ink));
+    tile.setBackgroundTintList(
+        android.content.res.ColorStateList.valueOf(
+            getColor(primary ? R.color.wallet_action_primary : R.color.app_surface_high)));
+    LinearLayout.LayoutParams size = new LinearLayout.LayoutParams(0, -1, 1);
+    if (parent.getChildCount() > 0) size.setMarginStart(dp(7));
+    parent.addView(tile, size);
+  }
+
+  private void dashboardEntry(String type) {
+    if (ledger.data.has("pending")) confirmPending();
+    else quickEntryForm(null, type);
+  }
+
+  private void recentRow(LinearLayout parent, JSONObject event) {
+    LinearLayout line = new LinearLayout(this);
+    line.setGravity(Gravity.CENTER_VERTICAL);
+    line.setPadding(0, dp(6), 0, dp(6));
+    String note = event.optString("note");
+    String category = event.optString("category");
+    String name = note.isBlank() ? Ledger.typeLabel(event.optString("type")) : note;
+    String group =
+        category.isBlank() ? Ledger.typeLabel(event.optString("type")) : category.split("/", 2)[0];
+    TextView icon =
+        compactText(
+            name.substring(0, name.offsetByCodePoints(0, 1)).toUpperCase(Locale.ROOT), 17, false);
+    icon.setTypeface(urbanist, android.graphics.Typeface.BOLD);
+    icon.setGravity(Gravity.CENTER);
+    icon.setBackground(walletShape(getColor(R.color.app_surface_high), 22));
+    line.addView(icon, new LinearLayout.LayoutParams(dp(42), dp(42)));
+    LinearLayout labels = new LinearLayout(this);
+    labels.setOrientation(LinearLayout.VERTICAL);
+    labels.setPadding(dp(9), 0, dp(5), 0);
+    labels.addView(compactText(name, 16, false));
+    labels.addView(compactText(group, 13, true));
+    line.addView(labels, new LinearLayout.LayoutParams(0, -2, 1));
+    String sign =
+        event.optLong("income") > 0 || event.optLong("expense") < 0
+            ? "+"
+            : event.optLong("expense") > 0 ? "−" : "";
+    String amount = sign + Ledger.money(event.optLong("amount"));
+    line.addView(compactText(amount, 15, false));
+    line.setContentDescription(name + ", " + group + ", " + amount);
+    line.setFocusable(true);
+    line.setOnClickListener(v -> transactionDetails(event));
+    parent.addView(line);
+  }
+
+  private void showReport(LocalDate start, LocalDate end) {
+    if (financeReport) {
+      reportStart = start;
+      reportEnd = end;
+      screen("Ngân sách", 6);
+      body.removeAllViews();
+      toolbarAction("Đổi kỳ", R.drawable.ic_calendar, () -> reportDialog(start, end));
+      financeReport(scrollPage(8), start, end, ledger.totals(start, end));
+    } else showAnalytics(start, end);
+  }
+
+  private void showAnalytics(LocalDate start, LocalDate end) {
+    reportStart = start;
+    reportEnd = end;
+    screen("Phân tích", 6);
+    toolbar.setTitleCentered(true);
+    toolbarAction(
+        "Ngân sách",
+        R.drawable.ic_account_balance_wallet_outline,
+        () -> {
+          financeReport = true;
+          showReport(start, end);
+        });
+    reportActions(start, end);
+    body.removeAllViews();
+    LinearLayout page = scrollPage(4);
+    LinearLayout selectors = new LinearLayout(this);
+    selectors.setBackground(walletShape(getColor(R.color.app_surface_high), 28));
+    String[] modes = {"Chi tiêu", "Thu nhập"};
+    for (int i = 0; i < modes.length; i++) {
+      boolean income = i == 1;
+      MaterialButton tab =
+          (MaterialButton)
+              centeredButton(
+                  modes[i],
+                  () -> {
+                    analyticsIncome = income;
+                    showAnalytics(start, end);
+                  });
+      tab.setTextColor(getColor(R.color.app_on_surface));
+      tab.setSelected(analyticsIncome == income);
+      if (analyticsIncome == income) ronasWhiteButton(tab);
+      selectors.addView(tab, new LinearLayout.LayoutParams(0, -2, 1));
+    }
+    page.addView(selectors);
+    JSONObject totals = ledger.totals(start, end);
+    String key = analyticsIncome ? "income" : "expense";
+    MaterialCardView panel = card(page, true);
+    LinearLayout content = new LinearLayout(this);
+    content.setOrientation(LinearLayout.VERTICAL);
+    content.setPadding(dp(13), dp(9), dp(13), dp(12));
+    panel.addView(content);
+    LinearLayout top = new LinearLayout(this);
+    top.setGravity(Gravity.CENTER_VERTICAL);
+    TextView amount = sectionText(Ledger.money(totals.optLong(key)), 29, false);
+    top.addView(amount, new LinearLayout.LayoutParams(0, -2, 1));
+    MaterialButton period =
+        (MaterialButton) centeredButton(periodTitle(start, end), () -> reportDialog(start, end));
+    period.setInsetTop(dp(5));
+    period.setInsetBottom(dp(5));
+    period.setBackgroundTintList(
+        android.content.res.ColorStateList.valueOf(getColor(R.color.ronas_chart_bar)));
+    period.setTextColor(getColor(R.color.app_on_surface));
+    top.addView(period);
+    content.addView(top);
+    List<RonasVisuals.Bar> bars = analyticsBars(start, end, key);
+    content.addView(
+        new RonasVisuals.Bars(this, bars, urbanist), new LinearLayout.LayoutParams(-1, dp(166)));
+
+    JSONObject categories =
+        analyticsIncome ? incomeCategories(start, end) : totals.optJSONObject("groups");
+    List<String> names = new ArrayList<>();
+    categories.keys().forEachRemaining(names::add);
+    names.sort((a, b) -> Long.compare(categories.optLong(b), categories.optLong(a)));
+    if (names.isEmpty()) page.addView(sectionText("Chưa có giao dịch trong kỳ này.", 14, true));
+    for (int i = 0; i < names.size(); i += 2) {
+      LinearLayout row = new LinearLayout(this);
+      row.setPadding(0, 0, 0, dp(7));
+      for (int slot = 0; slot < 2; slot++) {
+        int index = i + slot;
+        if (index == names.size()) {
+          row.addView(new View(this), new LinearLayout.LayoutParams(0, 1, 1));
+          break;
+        }
+        String category = names.get(index);
+        LinearLayout tile = new LinearLayout(this);
+        tile.setOrientation(LinearLayout.VERTICAL);
+        tile.setPadding(dp(13), dp(14), dp(13), dp(14));
+        tile.setMinimumHeight(dp(70));
+        tile.setBackground(walletShape(getColor(R.color.app_surface_high), 15));
+        tile.addView(sectionText(category, 13, true));
+        tile.addView(sectionText(Ledger.money(categories.optLong(category)), 21, false));
+        if (analyticsIncome) tile.setOnClickListener(v -> inPeriodIncome(start, end, category));
+        else tile.setOnClickListener(v -> categoryTransactions(start, end, category, 0));
+        LinearLayout.LayoutParams size = new LinearLayout.LayoutParams(0, -2, 1);
+        if (slot == 1) size.setMarginStart(dp(7));
+        row.addView(tile, size);
+      }
+      page.addView(row);
+    }
+  }
+
+  private String periodTitle(LocalDate start, LocalDate end) {
+    LocalDate now = LocalDate.now();
+    if (start.equals(end)) return "Ngày";
+    if (start.equals(now.withDayOfMonth(1)) && end.equals(now)) return "Tháng này";
+    if (java.time.temporal.ChronoUnit.DAYS.between(start, end) <= 6) return "Tuần";
+    return "Kỳ xem";
+  }
+
+  private List<RonasVisuals.Bar> analyticsBars(LocalDate start, LocalDate end, String key) {
+    long days = java.time.temporal.ChronoUnit.DAYS.between(start, end) + 1;
+    long stride = Math.max(1, (days + 6) / 7);
+    List<RonasVisuals.Bar> bars = new ArrayList<>();
+    for (long offset = 0; offset < days; offset += stride) {
+      LocalDate from = start.plusDays(offset);
+      LocalDate until = start.plusDays(Math.min(days - 1, offset + stride - 1));
+      String label =
+          stride == 1
+              ? (from.getDayOfWeek() == DayOfWeek.SUNDAY
+                  ? "CN"
+                  : "T" + (from.getDayOfWeek().getValue() + 1))
+              : "N" + from.getDayOfMonth();
+      bars.add(new RonasVisuals.Bar(label, ledger.totals(from, until).optLong(key)));
+    }
+    return bars;
+  }
+
+  private List<JSONObject> incomeEvents(LocalDate start, LocalDate end) {
+    List<JSONObject> events = new ArrayList<>();
+    for (List<JSONObject> page :
+        TransactionHistory.pages(ledger.array("events"), start, end, "", "", false))
+      for (JSONObject event : page) if (event.optLong("income") != 0) events.add(event);
+    return events;
+  }
+
+  private JSONObject incomeCategories(LocalDate start, LocalDate end) {
+    JSONObject groups = new JSONObject();
+    for (JSONObject event : incomeEvents(start, end)) {
+      String label = event.optString("category");
+      Ledger.put(groups, label, Math.addExact(groups.optLong(label), event.optLong("income")));
+    }
+    return groups;
+  }
+
+  private void inPeriodIncome(LocalDate start, LocalDate end, String category) {
+    LinearLayout entries = form();
+    for (JSONObject event : incomeEvents(start, end))
+      if (category.equals(event.optString("category"))) recentRow(entries, event);
+    dialog(category, entries, "Đóng", () -> {});
+  }
+
+  private android.graphics.drawable.GradientDrawable walletShape(int fill, int radius) {
+    android.graphics.drawable.GradientDrawable background =
+        new android.graphics.drawable.GradientDrawable();
+    background.setColor(fill);
+    background.setCornerRadius(dp(radius));
+    return background;
+  }
+
+  private void reportMetric(LinearLayout parent, String label, long amount, boolean stacked) {
+    LinearLayout metric = new LinearLayout(this);
+    metric.setOrientation(LinearLayout.VERTICAL);
+    metric.setPadding(0, dp(4), dp(8), dp(4));
+    metric.addView(sectionText(label, 13, true));
+    TextView value = sectionText(Ledger.money(amount), 23, false);
+    value.setTypeface(null, android.graphics.Typeface.BOLD);
+    metric.addView(value);
+    parent.addView(
+        metric,
+        stacked ? new LinearLayout.LayoutParams(-1, -2) : new LinearLayout.LayoutParams(0, -2, 1));
+  }
+
+  private void sectionHeading(LinearLayout parent, String label) {
+    TextView heading = sectionText(label, 17, false);
+    heading.setTypeface(null, android.graphics.Typeface.BOLD);
+    heading.setPadding(0, dp(8), 0, dp(4));
+    ViewCompat.setAccessibilityHeading(heading, true);
+    parent.addView(heading);
+  }
+
+  private ProgressBar reportProgress(double share, boolean over) {
+    ProgressBar bar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+    bar.setMax(1000);
+    bar.setProgress((int) Math.round(Math.max(0, Math.min(1, share)) * 1000));
+    bar.setProgressTintList(
+        android.content.res.ColorStateList.valueOf(
+            color(
+                over
+                    ? com.google.android.material.R.attr.colorError
+                    : com.google.android.material.R.attr.colorPrimary)));
+    bar.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+    return bar;
+  }
+
+  private void reportActions(LocalDate start, LocalDate end) {
+    Menu menu = toolbar.getMenu();
+    menu.add("Chi tiết báo cáo")
+        .setOnMenuItemClickListener(
+            item -> {
+              LinearLayout details = form();
+              details.addView(text(ledger.report(start, end), 15));
+              dialog("Chi tiết báo cáo", details, "Đóng", () -> {});
+              return true;
+            });
+    menu.add("Báo cáo định kỳ")
+        .setOnMenuItemClickListener(
+            item -> {
+              reportInbox();
+              return true;
+            });
+    menu.add("Xuất file văn bản")
+        .setOnMenuItemClickListener(
+            item -> {
+              exportDocument(
+                  ledger.report(start, end).getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                  "text/plain",
+                  "bao-cao-" + end + ".txt");
+              return true;
+            });
   }
 
   private void rules() {
@@ -1948,9 +2506,9 @@ public class MainActivity extends AppCompatActivity {
     reminders.sort(
         Comparator.comparing((JSONObject r) -> !r.optBoolean("active", true))
             .thenComparing(r -> ledger.nextDue(r)));
-    f.addView(text("Nghĩa vụ định kỳ · " + reminders.size(), 14));
-    if (reminders.isEmpty())
-      f.addView(text("Chưa có nhắc định kỳ. Thêm khoản cần theo dõi bên dưới.", 14));
+    f.addView(button("Thêm nghĩa vụ định kỳ", this::addReminder));
+    sectionHeading(f, "Định kỳ");
+    if (reminders.isEmpty()) f.addView(sectionText("Chưa có nhắc định kỳ.", 14, true));
     for (JSONObject rule : reminders) {
       boolean active = rule.optBoolean("active", true);
       String period =
@@ -1967,11 +2525,12 @@ public class MainActivity extends AppCompatActivity {
                   ? "Quá hạn"
                   : due.equals(LocalDate.now()) ? "Hôm nay" : period;
       String dueText = due.format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy"));
-      listRow(
+      compactDetailRow(
           f,
           rule.optString("name"),
-          "Hạn " + dueText + "\n" + status,
-          Ledger.money(rule.optLong("amount")),
+          dueText + " · " + status,
+          (rule.optBoolean("estimated") ? "≈ " : "") + Ledger.money(rule.optLong("amount")),
+          null,
           () -> reminderActions(rule));
     }
     List<JSONObject> debts = new ArrayList<>();
@@ -1984,7 +2543,7 @@ public class MainActivity extends AppCompatActivity {
     debts.sort(
         Comparator.comparing(
             e -> e.optString("due").isEmpty() ? "9999-12-31" : e.optString("due")));
-    if (!debts.isEmpty()) f.addView(text("Công nợ còn lại · " + debts.size(), 14));
+    if (!debts.isEmpty()) sectionHeading(f, "Công nợ còn lại");
     for (JSONObject debt : debts) {
       String due = debt.optString("due");
       String label = debt.optString("type").equals("lend") ? "Phải thu" : "Phải trả";
@@ -2017,55 +2576,54 @@ public class MainActivity extends AppCompatActivity {
             dialog("Chi tiết công nợ", detail, "Đã hiểu", () -> {});
           });
     }
-    f.addView(
-        button(
-            "Thêm nghĩa vụ định kỳ",
-            () -> {
-              LinearLayout form = form();
-              EditText name = field("Tên nghĩa vụ", ""),
-                  amount = field("Số tiền", ""),
-                  next = field("Kỳ đầu YYYY-MM-DD", Ledger.today());
-              form.addView(name);
-              form.addView(amount);
-              form.addView(next);
-              Spinner period = spinner(form, "Chu kỳ", List.of("month", "week", "year"));
-              CheckBox estimated = new CheckBox(this);
-              estimated.setText("Số tiền ước tính");
-              form.addView(estimated);
-              dialog(
-                  "Nghĩa vụ",
-                  form,
-                  "Thêm",
-                  () -> {
-                    LocalDate date = LocalDate.parse(next.getText().toString());
-                    long n = Assistant.amount(amount.getText().toString());
-                    if (n <= 0 || name.getText().toString().isBlank())
-                      throw new IllegalArgumentException("Cần tên và số tiền dương");
-                    mutate(
-                        () ->
-                            ledger
-                                .array("rules")
-                                .put(
-                                    Ledger.obj(
-                                        "id",
-                                        UUID.randomUUID().toString(),
-                                        "name",
-                                        name.getText().toString(),
-                                        "amount",
-                                        n,
-                                        "next",
-                                        date.toString(),
-                                        "day",
-                                        date.getDayOfMonth(),
-                                        "period",
-                                        period.getSelectedItem().toString(),
-                                        "estimated",
-                                        estimated.isChecked(),
-                                        "active",
-                                        true)));
-                    rules();
-                  });
-            }));
+  }
+
+  private void addReminder() {
+    LinearLayout fields = form();
+    EditText name = field("Tên nghĩa vụ", "");
+    EditText amount = field("Số tiền", "");
+    EditText firstDue = dateFilterField("Kỳ đầu", LocalDate.now());
+    fields.addView(name);
+    fields.addView(amount);
+    fields.addView(firstDue);
+    List<String> periods = List.of("month", "week", "year");
+    Spinner period = spinner(fields, "Chu kỳ", List.of("Hàng tháng", "Hàng tuần", "Hàng năm"));
+    CheckBox estimated = new CheckBox(this);
+    estimated.setText("Số tiền ước tính");
+    fields.addView(estimated);
+    dialog(
+        "Thêm nhắc hạn",
+        fields,
+        "Thêm",
+        () -> {
+          LocalDate date = (LocalDate) firstDue.getTag();
+          long n = Assistant.amount(amount.getText().toString());
+          if (n <= 0 || name.getText().toString().isBlank())
+            throw new IllegalArgumentException("Cần tên và số tiền dương");
+          mutate(
+              () ->
+                  ledger
+                      .array("rules")
+                      .put(
+                          Ledger.obj(
+                              "id",
+                              UUID.randomUUID().toString(),
+                              "name",
+                              name.getText().toString().strip(),
+                              "amount",
+                              n,
+                              "next",
+                              date.toString(),
+                              "day",
+                              date.getDayOfMonth(),
+                              "period",
+                              periods.get(period.getSelectedItemPosition()),
+                              "estimated",
+                              estimated.isChecked(),
+                              "active",
+                              true)));
+          rules();
+        });
   }
 
   private void reminderActions(JSONObject rule) {
@@ -2279,9 +2837,10 @@ public class MainActivity extends AppCompatActivity {
 
   private void settingRow(LinearLayout f, String title, String subtitle, Runnable action) {
     f.addView(button(title + "  ›", action));
+    if (subtitle.isBlank()) return;
     TextView note = text(subtitle, 13);
     note.setTextColor(color(com.google.android.material.R.attr.colorOnSurfaceVariant));
-    note.setPadding(dp(16), 0, dp(16), dp(12));
+    note.setPadding(dp(16), 0, dp(16), 0);
     f.addView(note);
   }
 
@@ -2326,100 +2885,147 @@ public class MainActivity extends AppCompatActivity {
   private void financeReport(
       LinearLayout parent, LocalDate start, LocalDate end, JSONObject totals) {
     String method = FinanceMethod.selected(ledger);
-    parent.addView(text("Phương pháp " + FinanceMethod.name(method), 20));
-    parent.addView(text("Thu nhập trong kỳ: " + Ledger.money(totals.optLong("income")), 16));
     long income = totals.optLong("income");
-    if (income <= 0)
-      parent.addView(
-          text(
-              "Chưa có thu nhập dương trong kỳ nên chưa tính được hạn mức. Chi tiêu vẫn hiển thị"
-                  + " bên dưới.",
-              15));
-    parent.addView(
-        text(
-            "Danh mục được tự động phân nhóm theo phương pháp. Chạm danh mục bên dưới để xem đã chi"
-                + " gì.",
-            14));
+    long remaining = Math.subtractExact(income, totals.optLong("expense"));
+    MaterialCardView overview = card(parent, true);
+    LinearLayout summary = new LinearLayout(this);
+    summary.setOrientation(LinearLayout.VERTICAL);
+    summary.setPadding(dp(12), 0, dp(12), dp(8));
+    overview.addView(summary);
+    MaterialButton methodButton =
+        (MaterialButton)
+            button(FinanceMethod.name(method) + "  ▾", () -> chooseReportMethod(start, end));
+    methodButton.setPadding(dp(4), 0, dp(4), 0);
+    summary.addView(methodButton, new LinearLayout.LayoutParams(-1, -2));
+    LinearLayout metrics = new LinearLayout(this);
+    metrics.setPadding(dp(4), 0, 0, 0);
+    boolean stacked =
+        getResources().getConfiguration().fontScale > 1.2f
+            || getResources().getConfiguration().screenWidthDp < 360;
+    metrics.setOrientation(stacked ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL);
+    summary.addView(metrics);
+    reportMetric(metrics, "Thu nhập", income, stacked);
+    reportMetric(metrics, "Còn lại sau thu–chi", remaining, stacked);
+    if (income <= 0) summary.addView(sectionText("Cần thu nhập dương để tính hạn mức.", 13, true));
+
+    sectionHeading(parent, "Phân bổ theo phương pháp");
     String[] labels = FinanceMethod.labels(method);
     int[] percentages = FinanceMethod.percentages(method);
     JSONObject groups = totals.optJSONObject("groups");
     long[] spent = FinanceMethod.spending(groups, method);
     for (int i = 0; i < labels.length; i++) {
-      MaterialCardView section = card(parent, false);
-      LinearLayout content = form();
-      section.addView(content);
-      content.addView(text(labels[i] + " · " + percentages[i] + "%", 18));
+      String title = labels[i] + " · " + percentages[i] + "%";
       long target = FinanceMethod.target(income, percentages[i]);
-      if (income > 0) content.addView(text("Mục tiêu: " + Ledger.money(target), 15));
-      if (i >= spent.length) {
-        if (FinanceMethod.DEFAULT.equals(method)) {
-          long available = Math.subtractExact(income, totals.optLong("expense"));
-          content.addView(text("Còn lại sau thu–chi: " + Ledger.money(available), 18));
-          if (income > 0)
-            content.addView(
-                text(
-                    available >= target
-                        ? "Khoản còn lại đạt mục tiêu 20%."
-                        : "Còn thiếu so với mục tiêu: "
-                            + Ledger.money(Math.subtractExact(target, available)),
-                    15));
-          content.addView(
-              text(
-                  "Đây là khoản có thể dành cho tiết kiệm, chưa xác nhận đã tiết kiệm thực tế.",
-                  14));
-        } else content.addView(text("Chưa theo dõi phân bổ vào quỹ này.", 14));
-        continue;
-      }
-      content.addView(text("Đã chi: " + Ledger.money(spent[i]), 18));
-      if (income > 0) {
-        boolean over = spent[i] > target;
-        TextView status =
-            text(
-                (over ? "Vượt mức: " : "Còn có thể chi: ")
-                    + Ledger.money(Math.abs(target - spent[i])),
-                15);
-        if (over) status.setTextColor(color(com.google.android.material.R.attr.colorError));
-        content.addView(status);
+      if (i < spent.length) {
+        int group = i;
+        long actual = spent[i];
+        boolean over = income > 0 && actual > target;
+        String status =
+            income <= 0
+                ? "Đã chi"
+                : (over ? "Vượt " : "Còn ") + Ledger.money(Math.abs(target - actual));
         ProgressBar progress =
-            new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
-        progress.setMax(1000);
-        progress.setProgress(
-            target > 0
-                ? (int) Math.min(1000d, Math.max(0d, (double) spent[i] / target * 1000d))
-                : (spent[i] > 0 ? 1000 : 0));
-        progress.setProgressTintList(
-            android.content.res.ColorStateList.valueOf(
-                color(
-                    over
-                        ? com.google.android.material.R.attr.colorError
-                        : com.google.android.material.R.attr.colorPrimary)));
-        progress.setContentDescription(
-            "Đã chi " + Ledger.money(spent[i]) + " trên " + Ledger.money(target));
-        content.addView(progress);
+            income > 0
+                ? reportProgress(target > 0 ? (double) actual / target : actual > 0 ? 1 : 0, over)
+                : null;
+        compactDetailRow(
+            parent,
+            title,
+            status,
+            Ledger.money(actual),
+            progress,
+            () -> budgetGroup(start, end, method, group, title, groups, actual, income, target));
+      } else {
+        boolean savings = FinanceMethod.DEFAULT.equals(method);
+        String status = income > 0 ? "Mục tiêu " + Ledger.money(target) : "Chưa có hạn mức";
+        compactDetailRow(
+            parent,
+            title,
+            status,
+            "",
+            null,
+            () -> savingsDetails(title, target, income, remaining, savings));
       }
-      List<String> categories = new ArrayList<>();
-      for (Iterator<String> it = groups.keys(); it.hasNext(); ) {
-        String category = it.next();
-        if (FinanceMethod.group(method, category) == i) categories.add(category);
-      }
-      categories.sort((a, b) -> Long.compare(groups.optLong(b), groups.optLong(a)));
-      for (String category : categories)
-        listRow(
-            content,
-            category,
-            "Xem giao dịch",
-            Ledger.money(groups.optLong(category)),
-            () -> categoryTransactions(start, end, category, 0));
-      if (categories.isEmpty()) content.addView(text("Chưa có chi tiêu trong nhóm này.", 14));
     }
-    long remaining = Math.subtractExact(income, totals.optLong("expense"));
-    parent.addView(text("Còn lại sau thu–chi: " + Ledger.money(remaining), 18));
-    parent.addView(
-        text(
-            "Khoản còn lại không đồng nghĩa với tiền đã tiết kiệm hoặc đầu tư; chưa trừ biến động"
-                + " vay, trả gốc và chuyển tiền. Với 6 chiếc lọ, hai quỹ tích lũy có mục tiêu riêng"
-                + " nhưng chưa có dữ liệu phân bổ thực tế.",
-            14));
+  }
+
+  private void chooseReportMethod(LocalDate start, LocalDate end) {
+    String[] methods = {FinanceMethod.DEFAULT, FinanceMethod.SIX_JARS};
+    new MaterialAlertDialogBuilder(this)
+        .setTitle("Phương pháp phân bổ")
+        .setSingleChoiceItems(
+            new String[] {FinanceMethod.name(methods[0]), FinanceMethod.name(methods[1])},
+            FinanceMethod.SIX_JARS.equals(FinanceMethod.selected(ledger)) ? 1 : 0,
+            (dialog, index) -> {
+              try {
+                mutate(() -> Ledger.put(ledger.data, "financeMethod", methods[index]));
+                dialog.dismiss();
+                showReport(start, end);
+              } catch (Exception e) {
+                error(e);
+              }
+            })
+        .setNegativeButton("Đóng", null)
+        .show();
+  }
+
+  private void budgetGroup(
+      LocalDate start,
+      LocalDate end,
+      String method,
+      int group,
+      String title,
+      JSONObject groups,
+      long actual,
+      long income,
+      long target) {
+    LinearLayout content = form();
+    content.addView(sectionText("Đã chi · " + Ledger.money(actual), 16, false));
+    if (income > 0) content.addView(sectionText("Hạn mức · " + Ledger.money(target), 14, true));
+    List<String> categories = new ArrayList<>();
+    for (Iterator<String> it = groups.keys(); it.hasNext(); ) {
+      String category = it.next();
+      if (FinanceMethod.group(method, category) == group) categories.add(category);
+    }
+    categories.sort((a, b) -> Long.compare(groups.optLong(b), groups.optLong(a)));
+    for (String category : categories)
+      compactDetailRow(
+          content,
+          category,
+          "",
+          Ledger.money(groups.optLong(category)),
+          null,
+          () -> categoryTransactions(start, end, category, 0));
+    if (categories.isEmpty())
+      content.addView(sectionText("Chưa có chi tiêu trong nhóm.", 14, true));
+    dialog(title, content, "Đóng", () -> {});
+  }
+
+  private void savingsDetails(
+      String title, long target, long income, long remaining, boolean savings) {
+    LinearLayout content = form();
+    if (income > 0) content.addView(sectionText("Mục tiêu · " + Ledger.money(target), 16, false));
+    if (savings) {
+      content.addView(sectionText("Còn lại sau thu–chi · " + Ledger.money(remaining), 16, false));
+      if (income > 0)
+        content.addView(
+            sectionText(
+                remaining >= target
+                    ? "Đạt mục tiêu trên thu–chi"
+                    : "Thiếu "
+                        + Ledger.money(Math.subtractExact(target, remaining))
+                        + " so với mục tiêu",
+                14,
+                true));
+      content.addView(
+          sectionText(
+              "Số còn lại chưa phản ánh khoản đã tiết kiệm, vay, trả gốc hoặc chuyển tiền.",
+              14,
+              true));
+    } else
+      content.addView(
+          sectionText("Chưa theo dõi số tiền thực tế đã chuyển vào quỹ này.", 14, true));
+    dialog(title, content, "Đóng", () -> {});
   }
 
   private void financeSettings() {
@@ -2460,16 +3066,29 @@ public class MainActivity extends AppCompatActivity {
     LinearLayout f = form();
     scroll.addView(f);
     body.addView(scroll);
-    settingRow(f, "Kết nối AI", "Key Google AI Studio và model", this::aiSettings);
+    sectionHeading(f, "Tùy chọn");
+    settingRow(
+        f,
+        "Kết nối AI",
+        ledger.data.optString("apiKey").isBlank() ? "Chưa thiết lập" : "Đã lưu key",
+        this::aiSettings);
     settingRow(
         f,
         "Quản lý tài chính",
         FinanceMethod.name(FinanceMethod.selected(ledger)),
         this::financeSettings);
-    settingRow(f, "Nhắc nhở", "Giờ nhắc hạn và quyền thông báo", this::notificationSettings);
-    settingRow(f, "Giao diện", "Sáng, tối hoặc theo hệ thống", this::appearanceSettings);
-    settingRow(f, "Dữ liệu", "Danh mục, sao lưu và khôi phục", this::dataSettings);
-    settingRow(f, "Giới thiệu", "Tính năng, phiên bản và cách dùng", this::about);
+    settingRow(f, "Nhắc nhở", "", this::notificationSettings);
+    String theme = getSharedPreferences("appearance", 0).getString("theme", "dark");
+    String appearance =
+        switch (theme) {
+          case "dark" -> "Tối";
+          case "light" -> "Sáng";
+          default -> "Theo hệ thống";
+        };
+    settingRow(f, "Giao diện", appearance, this::appearanceSettings);
+    sectionHeading(f, "Ứng dụng");
+    settingRow(f, "Dữ liệu", "", this::dataSettings);
+    settingRow(f, "Giới thiệu", "", this::about);
   }
 
   private void settingsBack() {
@@ -2527,7 +3146,7 @@ public class MainActivity extends AppCompatActivity {
   }
 
   private void appearanceSettings() {
-    String theme = getSharedPreferences("appearance", 0).getString("theme", "system");
+    String theme = getSharedPreferences("appearance", 0).getString("theme", "dark");
     new MaterialAlertDialogBuilder(this)
         .setTitle("Giao diện")
         .setSingleChoiceItems(
@@ -2602,7 +3221,7 @@ public class MainActivity extends AppCompatActivity {
 
   private void about() {
     LinearLayout f = settingsPage("Giới thiệu");
-    f.addView(text("Thư ký tài chính", 26));
+    f.addView(text(getString(R.string.app_name), 26));
     f.addView(text("Phiên bản " + BuildConfig.VERSION_NAME, 14));
     f.addView(
         text(

@@ -11,7 +11,7 @@ An open-source personal finance app with a Vietnamese chat interface. Track expe
 1. Download `finance-secretary.apk` from Releases and install it on Android.
 2. Open Chat and send `chi 45k cash ăn sáng` (spend VND 45,000 from cash for breakfast). This works offline without an API key.
 3. Review the proposed amount, account, date and category, then confirm. Transactions are only recorded after confirmation.
-4. View transactions in **Sổ** (Ledger) and reports in **Báo cáo** (Reports).
+4. Open **Tổng quan → Xem tất cả** (Overview → View all) for transactions or **Phân tích** (Analytics) for income and expenses.
 
 For natural-language chat, open **Cài đặt → Kết nối AI** (Settings → AI connection), enter your own [Google AI Studio API key](https://aistudio.google.com/apikey), choose a model and test the connection. Follow [Google's API key instructions](https://ai.google.dev/gemini-api/docs/api-key). The source defaults to `gemma-4-26b-a4b-it`; availability, quotas and costs depend on your Google account and the service.
 

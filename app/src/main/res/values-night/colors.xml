@@ -1,1 +1,18 @@
-<resources><color name="brand_primary">#85D5B2</color><color name="brand_on_primary">#003828</color><color name="brand_container">#00513D</color><color name="brand_on_container">#A1F2CE</color><color name="app_surface">#111512</color><color name="app_surface_low">#1B211D</color><color name="app_surface_high">#29312B</color><color name="app_on_surface">#E8EEE8</color><color name="app_secondary_text">#ABB7AE</color></resources>
+<resources>
+    <color name="brand_primary">#92DFC0</color>
+    <color name="brand_on_primary">#06291E</color>
+    <color name="brand_container">#174C3B</color>
+    <color name="brand_on_container">#C6F2DD</color>
+    <color name="app_surface">#0C0C0C</color>
+    <color name="app_surface_low">#1A1A1A</color>
+    <color name="app_surface_high">#242424</color>
+    <color name="app_on_surface">#FFFFFF</color>
+    <color name="app_secondary_text">#B0B0B2</color>
+    <color name="wallet_navigation">#242424</color>
+    <color name="wallet_navigation_selected">#FFFFFF</color>
+    <color name="wallet_navigation_selected_icon">#0C0C0C</color>
+    <color name="wallet_action_primary">#FFFFFF</color>
+    <color name="wallet_action_primary_icon">#0C0C0C</color>
+    <color name="ronas_chart_bar">#484848</color>
+    <color name="ronas_chart_selected">#65B795</color>
+</resources>

@@ -17,6 +17,16 @@ public class SmokeInstrumentation extends Instrumentation {
     start();
   }
 
+  private void openChat(View decor) {
+    findNavigation(decor).setSelectedItemId(1);
+  }
+
+  private void openBook(View decor) {
+    findNavigation(decor).setSelectedItemId(2);
+    findButton(decor, "Xem tất cả").performClick();
+    findButton(decor, "Nguồn tiền").performClick();
+  }
+
   private void check(boolean condition, String message) {
     if (!condition) throw new AssertionError(message);
   }
@@ -30,7 +40,7 @@ public class SmokeInstrumentation extends Instrumentation {
               .getApplicationInfo()
               .loadLabel(getTargetContext().getPackageManager())
               .toString()
-              .equals("Thư ký tài chính"),
+              .equals("Tài chính cá nhân"),
           "Installed application label is valid Vietnamese");
       concurrentReadDuringWrite();
       SecureStore store = new SecureStore(getTargetContext());
@@ -64,6 +74,7 @@ public class SmokeInstrumentation extends Instrumentation {
       intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
       Activity activity = startActivitySync(intent);
       waitForIdleSync();
+      runOnMainSync(() -> openChat(activity.getWindow().getDecorView()));
       runOnMainSync(
           () ->
               check(
@@ -101,20 +112,21 @@ public class SmokeInstrumentation extends Instrumentation {
       waitForIdleSync();
       runOnMainSync(
           () -> {
+            openChat(relaunched.getWindow().getDecorView());
             check(
                 findButton(relaunched.getWindow().getDecorView(), "Gửi") != null, "Relaunch works");
-            findNavigation(relaunched.getWindow().getDecorView()).setSelectedItemId(3);
+            openBook(relaunched.getWindow().getDecorView());
             check(
                 findButton(relaunched.getWindow().getDecorView(), "Thêm nguồn tiền") != null,
                 "Account screen renders");
             findButton(relaunched.getWindow().getDecorView(), "Giao dịch").performClick();
             check(
-                findNavigation(relaunched.getWindow().getDecorView()).getSelectedItemId() == 3,
-                "Transactions belongs to Book");
+                findButton(relaunched.getWindow().getDecorView(), "Nguồn tiền") != null,
+                "Transactions remains in Book");
             findButton(relaunched.getWindow().getDecorView(), "Nhắc hạn").performClick();
             check(
-                findNavigation(relaunched.getWindow().getDecorView()).getSelectedItemId() == 3,
-                "Reminders belongs to Book");
+                findButton(relaunched.getWindow().getDecorView(), "Nguồn tiền") != null,
+                "Reminders remains in Book");
             findButton(relaunched.getWindow().getDecorView(), "Nguồn tiền").performClick();
             check(
                 findButton(relaunched.getWindow().getDecorView(), "Thêm nguồn tiền") != null,
@@ -148,7 +160,7 @@ public class SmokeInstrumentation extends Instrumentation {
             check(key != null && model != null, "Labeled AI fields");
             key.setText("Bearer AIza-instrumentation-fixture");
             model.setText("gemma-4-31b-it");
-            findNavigation(relaunched.getWindow().getDecorView()).setSelectedItemId(1);
+            openChat(relaunched.getWindow().getDecorView());
           });
       JSONObject preferences = store.load();
       check(
@@ -329,7 +341,7 @@ public class SmokeInstrumentation extends Instrumentation {
     runOnMainSync(
         () -> {
           View decor = activity.getWindow().getDecorView();
-          findNavigation(decor).setSelectedItemId(3);
+          openBook(decor);
           findButton(decor, "Giao dịch").performClick();
           check(findText(decor, "Trang 1/3\n41 giao dịch"), "Bounded first page");
           check(!findButton(decor, "Trước").isEnabled(), "First page disables previous");
@@ -450,16 +462,14 @@ public class SmokeInstrumentation extends Instrumentation {
     clickDialog("Đóng");
     runOnMainSync(
         () -> {
-          findNavigation(activity.getWindow().getDecorView()).setSelectedItemId(1);
+          openChat(activity.getWindow().getDecorView());
           check(
               findToolbar(activity.getWindow().getDecorView()).getTitle().toString().equals("Chat"),
               "Chat title matches tab");
-          if (fullFlow) findButton(activity.getWindow().getDecorView(), "Thêm").performClick();
+          if (fullFlow) findButton(activity.getWindow().getDecorView(), "Ghi nhanh").performClick();
         });
     if (!fullFlow) return;
     waitForIdleSync();
-    clickDialog("Ghi nhanh");
-    clickDialog("Chi tiêu");
     String current = "Chi tiêu";
     String[] operations = {
       "Chi tiêu",

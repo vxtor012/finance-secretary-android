@@ -19,7 +19,7 @@ thu 10tr cash lương
 
 `cash` là bí danh của nguồn Tiền mặt có sẵn. Lệnh offline lấy ngày hôm nay và danh mục mặc định `Sinh hoạt/Khác` hoặc `Thu nhập/Khác`. Kiểm tra và chỉnh đề xuất trước khi xác nhận. Số tiền hỗ trợ `50k`, `1tr5`, `1500000`; phải là VND nguyên. Với tên nguồn nhiều từ, dùng biểu mẫu để chọn chính xác.
 
-**Chat → + → Ghi nhanh** mở bước chọn loại ghi chép trước. Sau khi chọn, biểu mẫu chỉ hiện trường liên quan; có thể đổi loại ngay trong biểu mẫu. Số tiền, ngày giao dịch và nội dung là các trường chung.
+Các nút **Chuyển**, **Nhận** và **Ghi khoản** ở Tổng quan mở biểu mẫu theo loại tương ứng. Nút **+** trong Chat cũng mở biểu mẫu. Có thể đổi loại ngay trong biểu mẫu để xem các trường liên quan. Số tiền, ngày giao dịch và nội dung là các trường chung.
 
 | Loại ghi | Trường riêng |
 |---|---|
@@ -89,7 +89,7 @@ Nghĩa vụ định kỳ có thể tạm dừng/kích hoạt lại. Đến hạn
 
 ## Báo cáo và thông báo
 
-Mở **Báo cáo**, chọn ngày/tuần/tháng/năm hoặc kỳ tùy chọn. Trong Chat có thể thử `báo cáo`, `tháng này tôi tiêu bao nhiêu`, `ai còn nợ tôi`.
+Mở **Phân tích**, chọn **Chi tiêu** hoặc **Thu nhập**, rồi chạm bộ chọn kỳ. Trong Chat có thể thử `báo cáo`, `tháng này tôi tiêu bao nhiêu`, `ai còn nợ tôi`.
 
 Báo cáo phân biệt thu chi với dòng tiền, có phân bổ danh mục, so sánh kỳ, nợ và nghĩa vụ. Phần nguồn tiền là số dư hiện tại từ mốc đối soát, không phải số dư cuối một kỳ quá khứ.
 
@@ -104,7 +104,7 @@ Không có tỷ lệ hoặc nhóm tùy chỉnh. Ăn ngoài, đồ uống, thể 
 
 Khi không có thu nhập dương trong kỳ, báo cáo vẫn hiển thị chi tiêu nhưng chưa tính hạn mức. **Còn lại sau thu–chi** là thu nhập trừ chi phí, không phải số dư tài khoản hay số tiền đã thực sự tiết kiệm. Các quỹ tích lũy hiển thị mục tiêu, chưa khẳng định phân bổ thực tế.
 
-Cấu hình tại **Cài đặt → Nhắc nhở**; giờ nhắc lưu riêng với AI. Báo cáo định kỳ xem ở **Báo cáo → Tùy chọn báo cáo → Báo cáo định kỳ**. Lịch theo múi giờ thiết bị. Android có thể trì hoãn thông báo; force-stop ngừng nhắc đến khi mở lại app.
+Cấu hình tại **Cài đặt → Nhắc nhở**; giờ nhắc lưu riêng với AI. Báo cáo định kỳ xem trong menu **⋮ → Báo cáo định kỳ** ở màn Phân tích. Lịch theo múi giờ thiết bị. Android có thể trì hoãn thông báo; force-stop ngừng nhắc đến khi mở lại app.
 
 ## Sao lưu và chuyển máy
 
