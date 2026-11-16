@@ -4,6 +4,13 @@
 
 Các phiên bản được xếp từ mới đến cũ. Số liệu kiểm thử bên dưới là ghi nhận tại thời điểm phát hành, không phải kết quả kiểm tra lại trong lần sửa tài liệu. Cài đè APK cùng chữ ký để giữ dữ liệu; sao lưu `.fsb` trước khi gỡ app hoặc chuyển máy.
 
+## v1.4.0
+
+- Màn Tổng quan mới có thẻ số dư, bộ chọn nguồn tiền và danh sách giao dịch gần đây. Các nút Chuyển, Nhận và Ghi khoản mở biểu mẫu ghi sổ tương ứng.
+- Màn Phân tích có biểu đồ tương tác cho chi tiêu và thu nhập. Chọn kỳ xem, mở giao dịch theo danh mục hoặc chuyển sang Ngân sách để xem 50/30/20 và 6 chiếc lọ.
+- Giao diện xanh lá có chế độ sáng, tối và theo hệ thống. Thanh điều hướng gọn hơn, ngày hiển thị theo định dạng Việt Nam và số tiền dùng VND.
+- APK vẫn dùng cùng định danh ứng dụng. Cài đè lên bản phát hành trước đã ký cùng khóa để giữ dữ liệu.
+
 ## v1.3.5
 
 - Chạm danh mục trong báo cáo để xem các giao dịch trong đúng kỳ, tổng chi và chi tiết từng giao dịch; danh sách dài có phân trang.
