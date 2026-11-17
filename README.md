@@ -12,7 +12,7 @@
 2. Mở app. Có sẵn nguồn **Tiền mặt**; chưa cần nhập số dư ban đầu.
 3. Trong **Chat**, thử `chi 45k cash ăn sáng` — không cần mạng hoặc API key.
 4. Kiểm tra số tiền, ngày, nguồn tiền và danh mục trong đề xuất, rồi xác nhận. Giao dịch chỉ được ghi sau bước này.
-5. Mở **Tổng quan → Xem tất cả** để xem giao dịch hoặc **Phân tích** để xem thu chi theo kỳ.
+5. Mở **Sổ → Giao dịch** để xem giao dịch hoặc **Báo cáo** để xem thu chi theo kỳ.
 
 Muốn chat tự nhiên như “Sáng ăn phở 45k tiền mặt”, vào **Cài đặt → Kết nối AI**, nhập key của bạn từ [Google AI Studio](https://aistudio.google.com/apikey), chọn model và bấm **Kiểm tra kết nối**. Xem [hướng dẫn API key của Google](https://ai.google.dev/gemini-api/docs/api-key). Key/model tự lưu; không đưa key vào mã nguồn. Model mặc định trong repo là `gemma-4-26b-a4b-it`; khả năng sử dụng phụ thuộc key và dịch vụ Google.
 

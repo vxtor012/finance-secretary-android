@@ -34,7 +34,7 @@ Lời hứa sản phẩm: ghi sổ có kiểm tra và xác nhận, cho biết ti
 | Báo cáo | Kỳ ngày/tuần/tháng/năm hoặc tùy chọn, phân bổ chi phí, mở giao dịch theo danh mục, phương pháp 50/30/20 hoặc 6 chiếc lọ, so sánh kỳ, dòng tiền, nợ và nghĩa vụ |
 | Dữ liệu | Nhóm giao dịch nguyên tử, chống trùng request ID, sửa/hoàn tác, sao lưu `.fsb`, xuất JSON |
 
-Điều hướng gồm **Tổng quan · Phân tích · Chat · Cài đặt**. Từ Tổng quan, mở **Xem tất cả** để vào Sổ hoặc chạm chuông để xem Nhắc hạn. Ngân sách mở từ Phân tích. Chat giữ 5 tin gần nhất; xóa chat không xóa sổ hoặc đề xuất đang chờ.
+Điều hướng gồm **Chat · Sổ · Báo cáo · Cài đặt**. Sổ có **Nguồn tiền**, **Giao dịch** và **Nhắc hạn**. Báo cáo có **Tổng quan** và **Quản lý tài chính**. Chat giữ 5 tin gần nhất; xóa chat không xóa sổ hoặc đề xuất đang chờ.
 
 ## Quy tắc tài chính bắt buộc
 

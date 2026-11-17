@@ -78,7 +78,15 @@ adb devices
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-Nếu có nhiều thiết bị, thêm `-s DEVICE_SERIAL` ngay sau `adb`. Dùng dữ liệu giả khi phát triển. App debug dùng cùng application ID `vn.finance.secretary` với release: APK khác chữ ký không thể cài đè. Sao lưu `.fsb` trước khi gỡ app hoặc đổi loại APK; ưu tiên emulator riêng cho debug.
+Nếu có nhiều thiết bị, thêm `-s DEVICE_SERIAL` ngay sau `adb`. Dùng dữ liệu giả khi phát triển. Bản `assembleDebug` dùng application ID `vn.finance.secretary` như bản phát hành.
+
+Để thử trên điện thoại đã cài bản phát hành, dùng biến thể `wifiDebug`. Biến thể này cài song song dưới tên **Tài chính cá nhân (Debug)** và có dữ liệu riêng.
+
+```powershell
+.\gradlew.bat assembleWifiDebug
+adb -s DEVICE_SERIAL install -r app/build/outputs/apk/wifiDebug/app-wifiDebug.apk
+adb -s DEVICE_SERIAL shell am start -n vn.finance.secretary.debug/vn.finance.secretary.MainActivity
+```
 
 ## Kiểm thử
 

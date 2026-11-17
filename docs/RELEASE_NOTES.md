@@ -4,6 +4,15 @@
 
 Các phiên bản được xếp từ mới đến cũ. Số liệu kiểm thử bên dưới là ghi nhận tại thời điểm phát hành, không phải kết quả kiểm tra lại trong lần sửa tài liệu. Cài đè APK cùng chữ ký để giữ dữ liệu; sao lưu `.fsb` trước khi gỡ app hoặc chuyển máy.
 
+## v1.4.1
+
+- Chat mở mặc định và nút **+** mở thẳng Ghi nhanh. Thanh điều hướng có bốn tab **Chat · Sổ · Báo cáo · Cài đặt**, với nền liền mạch đến vùng điều hướng Android.
+- Sổ tách tiền chi tiêu, tiết kiệm và thẻ tín dụng. Cả ba tab dùng chung nút ẩn số tiền. Nút Bộ lọc giao dịch hiển thị kỳ đang xem ngay trên cùng dòng.
+- Từ chi tiết công nợ, mở form trả gốc hoặc thu hồi gốc gắn với đúng khoản đã chọn.
+- Báo cáo hiển thị biểu đồ thu và chi theo 12 tháng phía trên tổng của kỳ xem. Khi chưa có lựa chọn đã lưu, app dùng phương pháp **6 chiếc lọ**. Lọ **Tiết kiệm dài hạn** hiển thị tiền từ các nguồn Tiết kiệm, bên cạnh mục tiêu 10% thu nhập của kỳ.
+
+Cài đè APK đã ký cùng khóa để tiếp tục dùng dữ liệu hiện có.
+
 ## v1.4.0
 
 - Màn Tổng quan mới có thẻ số dư, bộ chọn nguồn tiền và danh sách giao dịch gần đây. Các nút Chuyển, Nhận và Ghi khoản mở biểu mẫu ghi sổ tương ứng.

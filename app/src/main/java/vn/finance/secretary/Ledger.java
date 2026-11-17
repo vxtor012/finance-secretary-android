@@ -717,16 +717,25 @@ public final class Ledger {
     for (int i = 0; i < array("accounts").length(); i++) {
       JSONObject a = array("accounts").optJSONObject(i);
       String id = a.optString("id");
+      String type = a.optString("type");
+      boolean reconciled = a.has("checkpoint");
+      String amountLabel =
+          switch (type) {
+            case "card" -> "dư nợ phải trả theo sổ";
+            case "saving" ->
+                reconciled
+                    ? "tiền tiết kiệm từ mốc đối soát"
+                    : "biến động tiết kiệm (chưa đối soát)";
+            default ->
+                reconciled ? "số dư suy tính từ mốc đối soát" : "biến động (chưa đối soát)";
+          };
       s.append(a.optString("name"))
-          .append(
-              a.optString("type").equals("card")
-                  ? " · nợ thẻ theo sổ: "
-                  : a.has("checkpoint")
-                      ? " · số dư suy tính từ mốc đối soát: "
-                      : " · biến động (chưa đối soát): ")
+          .append(" · ")
+          .append(amountLabel)
+          .append(": ")
           .append(money(balance(id)))
           .append("\n");
-      if (!a.optString("type").equals("card"))
+      if (!type.equals("card"))
         s.append("  Dòng tiền kỳ: ")
             .append(money(total.optJSONObject("flows").optLong(id)))
             .append("\n");

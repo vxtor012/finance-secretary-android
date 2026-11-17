@@ -4,12 +4,39 @@ import java.time.LocalDate;
 import java.util.*;
 import org.json.*;
 
-/** Fixed reporting presets; never changes ledger events or claims actual saving allocations. */
+/** Fixed reporting presets and read-only summaries of recorded amounts. */
 final class FinanceMethod {
-  static final String DEFAULT = "50_30_20", SIX_JARS = "six_jars";
+  static final String FIFTY_THIRTY_TWENTY = "50_30_20", SIX_JARS = "six_jars";
+
+  record Savings(
+      int reconciledSources,
+      long reconciledAmount,
+      int unreconciledSources,
+      long unreconciledMovement) {}
+
+  static Savings longTermSavings(Ledger ledger) {
+    JSONArray accounts = ledger.array("accounts");
+    int reconciled = 0, unreconciled = 0;
+    long amount = 0, movement = 0;
+    for (int i = 0; i < accounts.length(); i++) {
+      JSONObject account = accounts.optJSONObject(i);
+      if (account.optBoolean("archived") || !account.optString("type").equals("saving")) continue;
+      long value = ledger.balance(account.optString("id"));
+      if (account.has("checkpoint")) {
+        reconciled++;
+        amount = Math.addExact(amount, value);
+      } else {
+        unreconciled++;
+        movement = Math.addExact(movement, value);
+      }
+    }
+    return new Savings(reconciled, amount, unreconciled, movement);
+  }
 
   static String selected(Ledger ledger) {
-    return SIX_JARS.equals(ledger.data.optString("financeMethod")) ? SIX_JARS : DEFAULT;
+    return FIFTY_THIRTY_TWENTY.equals(ledger.data.optString("financeMethod"))
+        ? FIFTY_THIRTY_TWENTY
+        : SIX_JARS;
   }
 
   static String name(String method) {

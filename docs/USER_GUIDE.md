@@ -19,7 +19,7 @@ thu 10tr cash lương
 
 `cash` là bí danh của nguồn Tiền mặt có sẵn. Lệnh offline lấy ngày hôm nay và danh mục mặc định `Sinh hoạt/Khác` hoặc `Thu nhập/Khác`. Kiểm tra và chỉnh đề xuất trước khi xác nhận. Số tiền hỗ trợ `50k`, `1tr5`, `1500000`; phải là VND nguyên. Với tên nguồn nhiều từ, dùng biểu mẫu để chọn chính xác.
 
-Các nút **Chuyển**, **Nhận** và **Ghi khoản** ở Tổng quan mở biểu mẫu theo loại tương ứng. Nút **+** trong Chat cũng mở biểu mẫu. Có thể đổi loại ngay trong biểu mẫu để xem các trường liên quan. Số tiền, ngày giao dịch và nội dung là các trường chung.
+Trong **Chat**, bấm **+** để mở Ghi nhanh rồi chọn nghiệp vụ. Có thể đổi loại ngay trong biểu mẫu để xem các trường liên quan. Số tiền, ngày giao dịch và nội dung là các trường chung.
 
 | Loại ghi | Trường riêng |
 |---|---|
@@ -57,7 +57,7 @@ Kiểm tra nghiệp vụ, số tiền, phí, ngày, danh mục, nguồn/đích v
 
 - `hoàn tác`: hoàn tác nhóm cuối; lịch sử giao dịch cho phép chọn nhóm cụ thể.
 - `sửa cuối chi 70k cash ăn sáng`: thay **toàn bộ nhóm cuối** sau khi duyệt đề xuất hợp lệ.
-- **+ → Xóa hội thoại**: giữ dữ liệu tài chính và đề xuất chờ. Chat chỉ giữ 5 tin gần nhất.
+- **⋮ → Xóa hội thoại**: giữ dữ liệu tài chính và đề xuất chờ. Chat chỉ giữ 5 tin gần nhất.
 
 Sửa/hoàn tác có thể bị từ chối nếu làm sai quan hệ công nợ hoặc thẻ; cần xử lý giao dịch phụ thuộc trước. Xử lý đề xuất chờ trước khi tạo đề xuất khác hoặc xóa nguồn liên quan.
 
@@ -75,11 +75,13 @@ Trong **Sổ → Nguồn tiền**, thêm tiền mặt, ngân hàng, ví, tiết 
 
 Không cần nhập số dư ban đầu. Trước đối soát, app chỉ biết biến động đã ghi, không biết tiền thực trong tài khoản. Dùng thao tác đối soát để lưu số dư thực tại thời điểm ghi nhận. Sửa giao dịch trước mốc có thể thay đổi báo cáo nhưng không tự đổi số dư đã xác minh.
 
+Thẻ tổng hợp cộng ít nhất hai nguồn chi tiêu. Tiết kiệm và dư nợ thẻ được hiển thị riêng. Dùng **Ẩn số tiền** ở bất kỳ tab nào trong Sổ để che số tiền trên cả ba tab.
+
 Nguồn chưa có dữ liệu có thể xóa; nguồn có giao dịch/mốc đối soát được ngừng sử dụng và có thể khôi phục. Phải giữ ít nhất một nguồn đang dùng. Giao dịch mới dùng 40 danh mục cố định; danh mục lịch sử được giữ nguyên.
 
 ## Công nợ, thẻ và nghĩa vụ
 
-Cho vay/thu hồi gốc và đi vay/trả gốc không phải chi phí/thu nhập. Khi thu/trả nợ, lấy **mã khoản nợ gốc** ở **Sổ → Nhắc hạn**, đặc biệt khi cùng người có nhiều khoản. Hạn trả có thể trống; khoản không có hạn vẫn có trong báo cáo.
+Cho vay/thu hồi gốc và đi vay/trả gốc không phải chi phí/thu nhập. Trong **Sổ → Nhắc hạn**, mở khoản nợ rồi chọn **Trả nợ gốc** hoặc **Thu hồi nợ** để mở form gắn với đúng khoản đó. Chi tiết cũng hiển thị mã khoản nợ để dùng trong Chat. Hạn trả có thể trống; khoản không có hạn vẫn có trong báo cáo.
 
 Mua bằng thẻ ghi chi phí và tăng nợ; trả thẻ giảm tiền và nợ, không ghi chi phí lần hai. App không tự nhập/khớp sao kê ngân hàng.
 
@@ -89,7 +91,7 @@ Nghĩa vụ định kỳ có thể tạm dừng/kích hoạt lại. Đến hạn
 
 ## Báo cáo và thông báo
 
-Mở **Phân tích**, chọn **Chi tiêu** hoặc **Thu nhập**, rồi chạm bộ chọn kỳ. Trong Chat có thể thử `báo cáo`, `tháng này tôi tiêu bao nhiêu`, `ai còn nợ tôi`.
+Mở **Báo cáo → Tổng quan** rồi chọn **Kỳ xem**. Biểu đồ đặt hai cột **Chi** (đỏ) và **Thu** (xanh) cạnh nhau cho từng tháng của năm chứa ngày kết thúc kỳ xem. Chạm một tháng để đọc số tiền. Thẻ bên dưới tính tổng theo đúng kỳ đã chọn. Trong Chat có thể thử `báo cáo`, `tháng này tôi tiêu bao nhiêu`, `ai còn nợ tôi`.
 
 Báo cáo phân biệt thu chi với dòng tiền, có phân bổ danh mục, so sánh kỳ, nợ và nghĩa vụ. Phần nguồn tiền là số dư hiện tại từ mốc đối soát, không phải số dư cuối một kỳ quá khứ.
 
@@ -97,14 +99,14 @@ Trong tab **Tổng quan**, chạm một danh mục để xem các giao dịch c�
 
 Tab **Quản lý tài chính** so sánh chi tiêu theo nhóm với tỷ lệ trên thu nhập cùng kỳ. Chọn tại **Cài đặt → Quản lý tài chính**:
 
-- **50/30/20** (mặc định): thiết yếu 50%, mong muốn 30%, tiết kiệm 20%.
-- **6 chiếc lọ**: thiết yếu 55%, hưởng thụ 10%, giáo dục 10%, cho đi 5%, tự do tài chính 10%, tiết kiệm dài hạn 10%.
+- **6 chiếc lọ** (mặc định): thiết yếu 55%, hưởng thụ 10%, giáo dục 10%, cho đi 5%, tự do tài chính 10%, tiết kiệm dài hạn 10%.
+- **50/30/20**: thiết yếu 50%, mong muốn 30%, tiết kiệm 20%.
 
 Không có tỷ lệ hoặc nhóm tùy chỉnh. Ăn ngoài, đồ uống, thể thao, mua sắm, giải trí, đăng ký và quà tặng thuộc mong muốn/hưởng thụ. Với 6 chiếc lọ, học tập chuyển vào giáo dục và quà tặng chuyển vào cho đi; các danh mục chi còn lại thuộc thiết yếu. Các danh mục trong từng nhóm vẫn mở được danh sách chi tiết. Lựa chọn phương pháp được lưu cùng dữ liệu và sao lưu.
 
-Khi không có thu nhập dương trong kỳ, báo cáo vẫn hiển thị chi tiêu nhưng chưa tính hạn mức. **Còn lại sau thu–chi** là thu nhập trừ chi phí, không phải số dư tài khoản hay số tiền đã thực sự tiết kiệm. Các quỹ tích lũy hiển thị mục tiêu, chưa khẳng định phân bổ thực tế.
+Khi không có thu nhập dương trong kỳ, báo cáo vẫn hiển thị chi tiêu nhưng chưa tính hạn mức. **Còn lại sau thu–chi** là thu nhập trừ chi phí. Trong phương pháp 6 chiếc lọ, **Tiết kiệm dài hạn** hiển thị tiền đang giữ theo các nguồn Tiết kiệm đã đối soát và biến động của các nguồn Tiết kiệm chưa đối soát. Đây là số liệu hiện tại. Mục tiêu 10% được tính theo thu nhập của kỳ xem.
 
-Cấu hình tại **Cài đặt → Nhắc nhở**; giờ nhắc lưu riêng với AI. Báo cáo định kỳ xem trong menu **⋮ → Báo cáo định kỳ** ở màn Phân tích. Lịch theo múi giờ thiết bị. Android có thể trì hoãn thông báo; force-stop ngừng nhắc đến khi mở lại app.
+Cấu hình tại **Cài đặt → Nhắc nhở**; giờ nhắc lưu riêng với AI. Báo cáo định kỳ xem trong menu **⋮ → Báo cáo định kỳ** ở màn Báo cáo. Lịch theo múi giờ thiết bị. Android có thể trì hoãn thông báo; force-stop ngừng nhắc đến khi mở lại app.
 
 ## Sao lưu và chuyển máy
 

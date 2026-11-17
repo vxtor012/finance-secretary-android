@@ -22,9 +22,7 @@ public class SmokeInstrumentation extends Instrumentation {
   }
 
   private void openBook(View decor) {
-    findNavigation(decor).setSelectedItemId(2);
-    findButton(decor, "Xem tất cả").performClick();
-    findButton(decor, "Nguồn tiền").performClick();
+    findNavigation(decor).setSelectedItemId(3);
   }
 
   private void check(boolean condition, String message) {
@@ -74,7 +72,6 @@ public class SmokeInstrumentation extends Instrumentation {
       intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
       Activity activity = startActivitySync(intent);
       waitForIdleSync();
-      runOnMainSync(() -> openChat(activity.getWindow().getDecorView()));
       runOnMainSync(
           () ->
               check(
@@ -112,20 +109,23 @@ public class SmokeInstrumentation extends Instrumentation {
       waitForIdleSync();
       runOnMainSync(
           () -> {
-            openChat(relaunched.getWindow().getDecorView());
             check(
                 findButton(relaunched.getWindow().getDecorView(), "Gửi") != null, "Relaunch works");
-            openBook(relaunched.getWindow().getDecorView());
+            View decor = relaunched.getWindow().getDecorView();
+            findNavigation(decor).setSelectedItemId(2);
+            check(findText(decor, "Tổng quan"), "Reports exposes its overview tab");
+            check(findText(decor, "Quản lý tài chính"), "Reports exposes its finance method tab");
+            openBook(decor);
             check(
                 findButton(relaunched.getWindow().getDecorView(), "Thêm nguồn tiền") != null,
                 "Account screen renders");
             findButton(relaunched.getWindow().getDecorView(), "Giao dịch").performClick();
             check(
-                findButton(relaunched.getWindow().getDecorView(), "Nguồn tiền") != null,
+                findNavigation(relaunched.getWindow().getDecorView()).getSelectedItemId() == 3,
                 "Transactions remains in Book");
             findButton(relaunched.getWindow().getDecorView(), "Nhắc hạn").performClick();
             check(
-                findButton(relaunched.getWindow().getDecorView(), "Nguồn tiền") != null,
+                findNavigation(relaunched.getWindow().getDecorView()).getSelectedItemId() == 3,
                 "Reminders remains in Book");
             findButton(relaunched.getWindow().getDecorView(), "Nguồn tiền").performClick();
             check(
@@ -133,7 +133,7 @@ public class SmokeInstrumentation extends Instrumentation {
                 "Book sections are mutually discoverable");
             findNavigation(relaunched.getWindow().getDecorView()).setSelectedItemId(4);
             check(
-                findButton(relaunched.getWindow().getDecorView(), "Giới thiệu  ›") != null,
+                findSetting(relaunched.getWindow().getDecorView(), "Giới thiệu") != null,
                 "Settings renders");
             check(
                 findEdit(relaunched.getWindow().getDecorView()) == null,
@@ -143,18 +143,18 @@ public class SmokeInstrumentation extends Instrumentation {
                         & WindowManager.LayoutParams.FLAG_SECURE)
                     == 0,
                 "Screen capture is enabled");
-            findButton(relaunched.getWindow().getDecorView(), "Giới thiệu  ›").performClick();
+            findSetting(relaunched.getWindow().getDecorView(), "Giới thiệu").performClick();
             check(
                 findText(
                     relaunched.getWindow().getDecorView(), "Phiên bản " + BuildConfig.VERSION_NAME),
                 "About shows installed version");
             ((MainActivity) relaunched).getOnBackPressedDispatcher().onBackPressed();
-            findButton(relaunched.getWindow().getDecorView(), "Dữ liệu  ›").performClick();
+            findSetting(relaunched.getWindow().getDecorView(), "Dữ liệu").performClick();
             check(
-                findButton(relaunched.getWindow().getDecorView(), "Sao lưu mã hóa  ›") != null,
+                findSetting(relaunched.getWindow().getDecorView(), "Sao lưu mã hóa") != null,
                 "Data settings exposes encrypted backup");
             ((MainActivity) relaunched).getOnBackPressedDispatcher().onBackPressed();
-            findButton(relaunched.getWindow().getDecorView(), "Kết nối AI  ›").performClick();
+            findSetting(relaunched.getWindow().getDecorView(), "Kết nối AI").performClick();
             EditText key = findLabeled(relaunched.getWindow().getDecorView(), "Key AI Studio"),
                 model = findLabeled(relaunched.getWindow().getDecorView(), "Model");
             check(key != null && model != null, "Labeled AI fields");
@@ -271,6 +271,7 @@ public class SmokeInstrumentation extends Instrumentation {
       runOnMainSync(upgraded::finish);
       Assistant.transport = GoogleAi::request;
       compactScreens();
+      bookAmountsAndDebt();
       result.putString(
           "stream",
           "PASS: startup, chat proposal, confirmation boundary, encrypted persistence, backup,"
@@ -279,7 +280,7 @@ public class SmokeInstrumentation extends Instrumentation {
               + " and proposal, settings hierarchy, About, screen capture, Book navigation,"
               + " serialized ledger read/write, compact history, paging, filters, reminder"
               + " deletion, theme back icon, API Back, single Close, operation-specific quick"
-              + " entry");
+              + " entry, Book privacy, savings separation, exact debt settlement, monthly report");
       finish(Activity.RESULT_OK, result);
     } catch (Throwable failure) {
       java.io.StringWriter trace = new java.io.StringWriter();
@@ -287,6 +288,154 @@ public class SmokeInstrumentation extends Instrumentation {
       result.putString("stream", "FAIL: " + trace);
       finish(Activity.RESULT_CANCELED, result);
     }
+  }
+
+  private void bookAmountsAndDebt() throws Exception {
+    SecureStore store = new SecureStore(getTargetContext());
+    Ledger fixture = new Ledger();
+    Ledger.put(fixture.data, "onboarded", true);
+    java.time.LocalDate today = java.time.LocalDate.now();
+    for (int i = 1; i <= 2; i++) {
+      fixture.commit(
+          new JSONArray()
+              .put(
+                  Ledger.obj(
+                      "type",
+                      "borrow",
+                      "amount",
+                      i * 100000,
+                      "account",
+                      "cash",
+                      "date",
+                      today.minusDays(i).toString(),
+                      "person",
+                      "Cùng người",
+                      "due",
+                      today.plusDays(i).toString())),
+          "borrow-" + i);
+    }
+    String debtId = fixture.array("events").optJSONObject(0).optString("id");
+    fixture.commit(
+        new JSONArray()
+            .put(
+                Ledger.obj(
+                    "type",
+                    "expense",
+                    "amount",
+                    40000,
+                    "account",
+                    "cash",
+                    "date",
+                    today.toString(),
+                    "category",
+                    "Sinh hoạt/Khác"))
+            .put(
+                Ledger.obj(
+                    "type",
+                    "income",
+                    "amount",
+                    80000,
+                    "account",
+                    "cash",
+                    "date",
+                    today.toString(),
+                    "category",
+                    "Thu nhập/Khác")),
+        "monthly-report");
+    fixture.addAccount("Ngân hàng mẫu", "bank", "");
+    fixture.addAccount("Tiết kiệm mẫu", "saving", "");
+    fixture.addAccount("Thẻ mẫu", "card", "");
+    fixture.reconcile("cash", 120000);
+    fixture.reconcile("Ngân hàng mẫu", 150000);
+    fixture.reconcile("Tiết kiệm mẫu", 900000);
+    fixture.reconcile("Thẻ mẫu", 50000);
+    store.save(fixture.data);
+    Activity activity =
+        startActivitySync(
+            new Intent(getTargetContext(), MainActivity.class)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+    waitForIdleSync();
+    runOnMainSync(
+        () -> {
+          View decor = activity.getWindow().getDecorView();
+          openBook(decor);
+          check(findText(decor, Ledger.money(270000)), "Spending total excludes savings and card");
+          check(findText(decor, "Tiền tiết kiệm"), "Savings has its own label");
+          check(findText(decor, "Dư nợ phải trả"), "Card debt has a repayment label");
+          findDescription(decor, "Ẩn số tiền").performClick();
+          findButton(decor, "Giao dịch").performClick();
+          check(findText(decor, "••••••"), "History retains Book privacy");
+          check(!findText(decor, "+" + Ledger.money(80000)), "History hides income");
+          findButton(decor, "Nhắc hạn").performClick();
+          View debt = findDescription(decor, "Cùng người, Phải trả");
+          check(debt.getContentDescription().toString().contains("••••••"), "Reminders hide debts");
+          findDescription(decor, "Hiện số tiền").performClick();
+          findDescription(decor, "Cùng người, Phải trả").performClick();
+        });
+    waitForIdleSync();
+    clickDialog("Trả nợ gốc");
+    check(dialogTextCount("Khoản nợ gốc") > 0, "Debt settlement opens a linked form");
+    check(
+        setFirstEditable(getUiAutomation().getRootInActiveWindow(), "25000"),
+        "Settlement amount can be entered");
+    clickDialog("Đề xuất");
+    JSONObject action =
+        store.load().getJSONObject("pending").getJSONArray("actions").getJSONObject(0);
+    check(
+        action.optString("type").equals("repay") && action.optString("debtId").equals(debtId),
+        "Settlement targets the clicked debt even with duplicate names");
+    clickDialog("Xác nhận ghi sổ");
+    check(new Ledger(store.load()).debt(debtId) == 75000, "Partial repayment leaves the remainder");
+    runOnMainSync(
+        () -> {
+          View decor = activity.getWindow().getDecorView();
+          check(findText(decor, "Công nợ còn lại"), "Settlement returns to reminders");
+          findNavigation(decor).setSelectedItemId(2);
+          check(
+              findText(decor, "Thu chi theo tháng · " + today.getYear()),
+              "Report shows annual chart");
+          check(
+              findText(
+                  decor,
+                  "Tháng "
+                      + today.getMonthValue()
+                      + " · Chi "
+                      + Ledger.money(40000)
+                      + " · Thu "
+                      + Ledger.money(80000)),
+              "Monthly chart excludes principal settlements");
+          findButton(decor, "Quản lý tài chính").performClick();
+          View savings = findDescription(decor, "Tiết kiệm dài hạn · 10%, ");
+          check(
+              savings != null
+                  && savings
+                      .getContentDescription()
+                      .toString()
+                      .contains(
+                          "Mục tiêu kỳ · "
+                              + Ledger.money(8000)
+                              + "\nĐang giữ (đã đối soát) · "
+                              + Ledger.money(900000)),
+              "Long-term jar shows current savings and the period goal separately");
+          activity.finish();
+        });
+    waitForIdleSync();
+  }
+
+  private boolean setFirstEditable(
+      android.view.accessibility.AccessibilityNodeInfo node, String value) {
+    if (node == null) return false;
+    if (node.isEditable()) {
+      Bundle arguments = new Bundle();
+      arguments.putCharSequence(
+          android.view.accessibility.AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
+          value);
+      return node.performAction(
+          android.view.accessibility.AccessibilityNodeInfo.ACTION_SET_TEXT, arguments);
+    }
+    for (int i = 0; i < node.getChildCount(); i++)
+      if (setFirstEditable(node.getChild(i), value)) return true;
+    return false;
   }
 
   private void compactScreens() throws Exception {
@@ -354,7 +503,7 @@ public class SmokeInstrumentation extends Instrumentation {
           check(findDescription(decor, "Khoản 0-0,") != null, "Busy-day continuation rendered");
           findButton(decor, "Sau").performClick();
           check(!findButton(decor, "Sau").isEnabled(), "Last page disables next");
-          findButton(decor, "Bộ lọc").performClick();
+          findButton(decor, "Bộ lọc · Tất cả").performClick();
         });
     waitForIdleSync();
     clickDialog("Tất cả");
@@ -365,7 +514,7 @@ public class SmokeInstrumentation extends Instrumentation {
           check(
               findText(activity.getWindow().getDecorView(), "Trang 1/2\n35 giao dịch"),
               "Today filter changes page count and resets page");
-          findButton(activity.getWindow().getDecorView(), "Bộ lọc").performClick();
+          findButton(activity.getWindow().getDecorView(), "Bộ lọc · Hôm nay").performClick();
         });
     waitForIdleSync();
     clickDialog("Xóa bộ lọc");
@@ -419,7 +568,7 @@ public class SmokeInstrumentation extends Instrumentation {
       runOnMainSync(
           () -> {
             findNavigation(themed.getWindow().getDecorView()).setSelectedItemId(4);
-            findButton(themed.getWindow().getDecorView(), "Giới thiệu  ›").performClick();
+            findSetting(themed.getWindow().getDecorView(), "Giới thiệu").performClick();
             com.google.android.material.appbar.MaterialToolbar toolbar =
                 findToolbar(themed.getWindow().getDecorView());
             check(
@@ -430,7 +579,7 @@ public class SmokeInstrumentation extends Instrumentation {
             check(toolbar.getNavigationIcon() != null, "Back icon present");
             ((MainActivity) themed).getOnBackPressedDispatcher().onBackPressed();
             check(
-                findButton(themed.getWindow().getDecorView(), "Giới thiệu  ›") != null,
+                findSetting(themed.getWindow().getDecorView(), "Giới thiệu") != null,
                 "Back returns to settings");
           });
       waitForIdleSync();
@@ -449,13 +598,13 @@ public class SmokeInstrumentation extends Instrumentation {
     runOnMainSync(
         () -> {
           View decor = activity.getWindow().getDecorView();
-          findButton(decor, "Kết nối AI  ›").performClick();
+          findSetting(decor, "Kết nối AI").performClick();
           check(findToolbar(decor).getNavigationIcon() != null, "API settings exposes Back");
           check(findToolbar(decor).getTitle().toString().equals("Kết nối AI"), "API page title");
           findDescription(decor, "Quay lại Cài đặt").performClick();
-          check(findButton(decor, "Dữ liệu  ›") != null, "API Back returns to settings");
-          findButton(decor, "Dữ liệu  ›").performClick();
-          findButton(decor, "Danh mục  ›").performClick();
+          check(findSetting(decor, "Dữ liệu") != null, "API Back returns to settings");
+          findSetting(decor, "Dữ liệu").performClick();
+          findSetting(decor, "Danh mục").performClick();
         });
     waitForIdleSync();
     check(dialogTextCount("Đóng") == 1, "Category dialog has one Close button");
@@ -470,6 +619,7 @@ public class SmokeInstrumentation extends Instrumentation {
         });
     if (!fullFlow) return;
     waitForIdleSync();
+    clickDialog("Chi tiêu");
     String current = "Chi tiêu";
     String[] operations = {
       "Chi tiêu",
@@ -586,6 +736,11 @@ public class SmokeInstrumentation extends Instrumentation {
       android.os.SystemClock.sleep(100);
     }
     throw new AssertionError("Dialog action not found: " + label);
+  }
+
+  private View findSetting(View view, String label) {
+    View withSubtitle = findDescription(view, label + ", ");
+    return withSubtitle != null ? withSubtitle : findDescription(view, label + ". ");
   }
 
   private View findDescription(View view, String prefix) {

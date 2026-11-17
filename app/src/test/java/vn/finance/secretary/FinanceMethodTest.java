@@ -11,13 +11,42 @@ public class FinanceMethodTest {
   @Test
   public void defaultsAndPersistsPresetInBackupData() throws Exception {
     Ledger ledger = new Ledger();
-    assertEquals(FinanceMethod.DEFAULT, FinanceMethod.selected(ledger));
-    Ledger.put(ledger.data, "financeMethod", FinanceMethod.SIX_JARS);
+    assertEquals(FinanceMethod.SIX_JARS, FinanceMethod.selected(ledger));
+    Ledger.put(ledger.data, "financeMethod", FinanceMethod.FIFTY_THIRTY_TWENTY);
     assertEquals(
-        FinanceMethod.SIX_JARS,
+        FinanceMethod.FIFTY_THIRTY_TWENTY,
         FinanceMethod.selected(new Ledger(new JSONObject(ledger.data.toString()))));
     Ledger.put(ledger.data, "financeMethod", "unknown");
-    assertEquals(FinanceMethod.DEFAULT, FinanceMethod.selected(ledger));
+    assertEquals(FinanceMethod.SIX_JARS, FinanceMethod.selected(ledger));
+  }
+
+  @Test
+  public void longTermSavingsSeparatesVerifiedAmountsAndRecordedMovement() {
+    Ledger ledger = new Ledger();
+    ledger.addAccount("Đã đối soát", "saving", "");
+    ledger.addAccount("Đang theo dõi", "saving", "");
+    ledger.addAccount("Ngừng dùng", "saving", "");
+    ledger.reconcile("Đã đối soát", 900000);
+    ledger.reconcile("Ngừng dùng", 700000);
+    ledger.reconcile("cash", 500000);
+    Ledger.put(ledger.account("Ngừng dùng"), "archived", true);
+    ledger.commit(
+        new JSONArray()
+            .put(
+                Ledger.obj(
+                    "type",
+                    "transfer",
+                    "amount",
+                    50000,
+                    "account",
+                    "cash",
+                    "to",
+                    "Đang theo dõi",
+                    "date",
+                    Ledger.today())),
+        "move-to-savings");
+    assertEquals(
+        new FinanceMethod.Savings(1, 900000, 1, 50000), FinanceMethod.longTermSavings(ledger));
   }
 
   @Test
@@ -26,16 +55,16 @@ public class FinanceMethodTest {
     for (String category : Ledger.STANDARD_CATEGORIES)
       if (!category.startsWith("Thu nhập/")) Ledger.put(groups, category, 12345);
     Ledger.put(groups, "Danh mục cũ/Khác", 99);
-    for (String method : List.of(FinanceMethod.DEFAULT, FinanceMethod.SIX_JARS)) {
+    for (String method : List.of(FinanceMethod.FIFTY_THIRTY_TWENTY, FinanceMethod.SIX_JARS)) {
       assertEquals(100, Arrays.stream(FinanceMethod.percentages(method)).sum());
       assertEquals(
           (Ledger.STANDARD_CATEGORIES.size() - 6) * 12345L + 99,
           Arrays.stream(FinanceMethod.spending(groups, method)).sum());
     }
     assertEquals(2, FinanceMethod.group(FinanceMethod.SIX_JARS, "Học tập/Học phí"));
-    assertEquals(0, FinanceMethod.group(FinanceMethod.DEFAULT, "Học tập/Học phí"));
+    assertEquals(0, FinanceMethod.group(FinanceMethod.FIFTY_THIRTY_TWENTY, "Học tập/Học phí"));
     assertEquals(3, FinanceMethod.group(FinanceMethod.SIX_JARS, "Quà tặng/Từ thiện"));
-    assertEquals(1, FinanceMethod.group(FinanceMethod.DEFAULT, "Ăn uống/Ăn ngoài"));
+    assertEquals(1, FinanceMethod.group(FinanceMethod.FIFTY_THIRTY_TWENTY, "Ăn uống/Ăn ngoài"));
   }
 
   @Test

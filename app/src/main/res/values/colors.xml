@@ -1,20 +1,16 @@
 <resources>
-    <color name="brand_primary">#146C54</color>
+    <color name="brand_primary">#076C53</color>
     <color name="brand_on_primary">#FFFFFF</color>
-    <color name="brand_container">#CBEFDD</color>
-    <color name="brand_on_container">#073828</color>
-    <color name="app_surface">#F8F9F8</color>
-    <color name="app_surface_low">#EEF1EF</color>
-    <color name="app_surface_high">#E6ECE8</color>
-    <color name="app_on_surface">#151517</color>
-    <color name="app_secondary_text">#47554E</color>
-    <color name="wallet_navigation">#E6ECE8</color>
-    <color name="wallet_navigation_selected">#146C54</color>
-    <color name="wallet_navigation_selected_icon">#FFFFFF</color>
-    <color name="wallet_action_primary">#146C54</color>
-    <color name="wallet_action_primary_icon">#FFFFFF</color>
-    <color name="ronas_chart_bar">#A6B4AC</color>
-    <color name="ronas_chart_selected">#247A60</color>
-    <color name="ronas_dark">#0C0C0C</color>
-    <color name="balance_card_green">#176451</color>
+    <color name="brand_container">#D3F0E3</color>
+    <color name="brand_on_container">#064637</color>
+    <color name="app_surface">#F5F8F6</color>
+    <color name="app_surface_low">#FFFFFF</color>
+    <color name="app_surface_high">#E5EFE9</color>
+    <color name="app_on_surface">#152720</color>
+    <color name="app_secondary_text">#506258</color>
+    <color name="app_outline">#D9E4DD</color>
+    <color name="chart_expense">#B84949</color>
+    <color name="chart_income">#087558</color>
+    <color name="balance_card_green">#08634E</color>
+    <color name="balance_card_on">#FFFFFF</color>
 </resources>
