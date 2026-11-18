@@ -3,7 +3,7 @@
     <item name="colorPrimary">@color/brand_primary</item><item name="colorOnPrimary">@color/brand_on_primary</item>
     <item name="colorPrimaryContainer">@color/brand_container</item><item name="colorOnPrimaryContainer">@color/brand_on_container</item>
     <item name="colorSecondaryContainer">@color/brand_container</item><item name="colorOnSecondaryContainer">@color/brand_on_container</item>
-    <item name="android:fontFamily">@font/urbanist</item>
+    <item name="android:fontFamily">@font/be_vietnam_pro</item>
     <item name="android:statusBarColor">@android:color/transparent</item>
     <item name="android:navigationBarColor">@android:color/transparent</item>
     <item name="textInputStyle">@style/Widget.Material3.TextInputLayout.OutlinedBox</item>
@@ -16,7 +16,7 @@
     <item name="colorOutlineVariant">@color/app_outline</item>
   </style>
   <style name="PageTitle" parent="TextAppearance.Material3.TitleLarge">
-    <item name="android:fontFamily">@font/urbanist</item>
+    <item name="android:fontFamily">@font/be_vietnam_pro</item>
     <item name="android:textStyle">bold</item>
   </style>
 </resources>

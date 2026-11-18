@@ -4,6 +4,12 @@
 
 Các phiên bản được xếp từ mới đến cũ. Số liệu kiểm thử bên dưới là ghi nhận tại thời điểm phát hành, không phải kết quả kiểm tra lại trong lần sửa tài liệu. Cài đè APK cùng chữ ký để giữ dữ liệu; sao lưu `.fsb` trước khi gỡ app hoặc chuyển máy.
 
+## v1.4.2
+
+- Chat kiểm tra đề xuất trước khi hiện xác nhận. Khoản chi có nguồn là thẻ tín dụng được đề xuất dưới loại **Chi bằng thẻ**.
+- Form chỉnh đề xuất chỉ hiện ô **Đích** cho chuyển tiền và trả thẻ. Khi đổi nguồn của khoản mua hàng, loại nghiệp vụ được cập nhật theo nguồn mới.
+- Thay Urbanist bằng **Be Vietnam Pro** để hiển thị chữ tiếng Việt và dấu tổ hợp trên Android.
+
 ## v1.4.1
 
 - Chat mở mặc định và nút **+** mở thẳng Ghi nhanh. Thanh điều hướng có bốn tab **Chat · Sổ · Báo cáo · Cài đặt**, với nền liền mạch đến vùng điều hướng Android.

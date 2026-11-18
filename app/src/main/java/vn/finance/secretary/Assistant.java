@@ -112,6 +112,9 @@ public final class Assistant {
             + " khoản nợ, hoặc ngày: actions=[] và hỏi lại. Hỗ trợ nhiều nghiệp vụ trong tin."
             + " actions có type"
             + " expense,income,transfer,lend,borrow,collect,repay,card_purchase,card_payment,card_refund;"
+            + " Chi mua hàng từ nguồn type=card dùng card_purchase; từ nguồn tiền dùng expense."
+            + " Thanh toán dư nợ thẻ dùng card_payment, với thẻ ở trường to."
+            + " Khi có actions, reply chỉ mô tả đề xuất sẽ chờ xác nhận."
             + " amount số nguyên VND; account tên/id tài khoản; to cho chuyển/trả thẻ; fee; person"
             + " cho vay; debtId mã khoản gốc cho collect/repay; date YYYY-MM-DD; due tùy chọn;"
             + " category chỉ được chọn từ categories trong Context; không tạo danh mục mới; note."
@@ -233,6 +236,24 @@ public final class Assistant {
       throw new java.io.IOException("Phản hồi JSON chưa hoàn chỉnh. Chưa ghi tiền; hãy thử lại.");
     // A conversational answer is safe to display, but never inferred as a financial mutation.
     return Ledger.obj("reply", content, "actions", new JSONArray());
+  }
+
+  static void prepareProposal(Ledger ledger, JSONArray actions, String requestId, String replace) {
+    try {
+      Ledger trial = new Ledger(new JSONObject(ledger.data.toString()));
+      for (int i = 0; i < actions.length(); i++) {
+        JSONObject action = actions.getJSONObject(i);
+        if (action.optString("type").equals("expense")) {
+          JSONObject source = trial.account(action.optString("account"));
+          if (source.optString("type").equals("card"))
+            Ledger.put(action, "type", "card_purchase");
+        }
+      }
+      if (replace.isEmpty()) trial.commit(actions, requestId);
+      else trial.replace(replace, actions, requestId);
+    } catch (JSONException e) {
+      throw new IllegalArgumentException("Đề xuất giao dịch sai định dạng.", e);
+    }
   }
 
   public static String checkConnection(String key, String model) throws Exception {

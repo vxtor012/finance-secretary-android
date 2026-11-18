@@ -44,7 +44,7 @@ public class MainActivity extends AppCompatActivity {
   private boolean financeReport = false;
   private boolean hideBalance;
   private ScrollView bookScroll;
-  private android.graphics.Typeface urbanist;
+  private android.graphics.Typeface appTypeface;
   private LocalDate reportStart = LocalDate.now().withDayOfMonth(1), reportEnd = LocalDate.now();
   private int historyPage = 0;
   private LocalDate historyStart, historyEnd;
@@ -62,7 +62,7 @@ public class MainActivity extends AppCompatActivity {
                 : AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM);
 
     super.onCreate(b);
-    urbanist = androidx.core.content.res.ResourcesCompat.getFont(this, R.font.urbanist);
+    appTypeface = androidx.core.content.res.ResourcesCompat.getFont(this, R.font.be_vietnam_pro);
     KeyguardManager gate = (KeyguardManager) getSystemService(KEYGUARD_SERVICE);
     if (gate.isDeviceSecure()) {
       startActivityForResult(
@@ -304,7 +304,7 @@ public class MainActivity extends AppCompatActivity {
     TextView t = new TextView(this);
     t.setText(value);
     t.setTextSize(size);
-    t.setTypeface(urbanist);
+    t.setTypeface(appTypeface);
     t.setTextColor(color(com.google.android.material.R.attr.colorOnSurface));
     t.setLineSpacing(dp(3), 1.05f);
     t.setPadding(dp(8), dp(8), dp(8), dp(8));
@@ -331,7 +331,7 @@ public class MainActivity extends AppCompatActivity {
       b.setPadding(dp(16), 0, dp(16), 0);
     }
     b.setText(title);
-    b.setTypeface(urbanist);
+    b.setTypeface(appTypeface);
     b.setAllCaps(false);
     b.setOnClickListener(
         v -> {
@@ -384,7 +384,7 @@ public class MainActivity extends AppCompatActivity {
     e.setHint(hint);
     e.setText(value);
     e.setTextSize(15);
-    e.setTypeface(urbanist);
+    e.setTypeface(appTypeface);
     return e;
   }
 
@@ -808,10 +808,20 @@ public class MainActivity extends AppCompatActivity {
                   if (isFinishing() || isDestroyed()) return;
                   busy = false;
                   try {
+                     JSONArray actions = output.optJSONArray("actions");
+                     if (actions.length() > 0) {
+                       try {
+                         Assistant.prepareProposal(ledger, actions, request, replace);
+                       } catch (IllegalArgumentException e) {
+                         mutate(() -> chat("assistant", "Chưa tạo được đề xuất. " + e.getMessage()));
+                         showChat();
+                         return;
+                       }
+                     }
                     mutate(
                         () -> {
                           chat("assistant", output.optString("reply"));
-                          if (output.optJSONArray("actions").length() > 0)
+                           if (actions.length() > 0)
                             Ledger.put(
                                 ledger.data,
                                 "pending",
@@ -819,7 +829,7 @@ public class MainActivity extends AppCompatActivity {
                                     "requestId",
                                     request,
                                     "actions",
-                                    output.optJSONArray("actions"),
+                                     actions,
                                     "replace",
                                     replace));
                         });
@@ -854,7 +864,7 @@ public class MainActivity extends AppCompatActivity {
           .append(Ledger.money(a.optLong("amount")))
           .append("\nNguồn: ")
           .append(a.optString("account"))
-          .append(a.optString("to").isEmpty() ? "" : " → " + a.optString("to"))
+          .append(usesDestination(a) && !a.optString("to").isEmpty() ? " → " + a.optString("to") : "")
           .append("\nNgày: ")
           .append(a.optString("date", Ledger.today()))
           .append(" · ")
@@ -891,10 +901,10 @@ public class MainActivity extends AppCompatActivity {
       receipt.addView(content);
       content.addView(sectionText(Ledger.typeLabel(a.optString("type")), 14, true));
       TextView value = sectionText(Ledger.money(a.optLong("amount")), 32, false);
-      value.setTypeface(urbanist, android.graphics.Typeface.BOLD);
+      value.setTypeface(appTypeface, android.graphics.Typeface.BOLD);
       content.addView(value);
       String from = accountLabel(a.optString("account"));
-      String to = accountLabel(a.optString("to"));
+      String to = usesDestination(a) ? accountLabel(a.optString("to")) : "";
       String route = to.isBlank() ? from : from + " → " + to;
       String date = dateLabel(a.optString("date", Ledger.today()));
       String category = a.optString("category");
@@ -986,12 +996,17 @@ public class MainActivity extends AppCompatActivity {
                         .indexOf(ledger.account(action.optString("account")).optString("name")));
               } catch (Exception ignored) {
               }
-              Spinner to = spinner(f, "Đích (chuyển / trả thẻ)", accountNames());
-              try {
-                to.setSelection(
-                    accountNames()
-                        .indexOf(ledger.account(action.optString("to")).optString("name")));
-              } catch (Exception ignored) {
+              Spinner to =
+                  usesDestination(action)
+                      ? spinner(f, "Đích (chuyển / trả thẻ)", accountNames())
+                      : null;
+              if (to != null) {
+                try {
+                  to.setSelection(
+                      accountNames()
+                          .indexOf(ledger.account(action.optString("to")).optString("name")));
+                } catch (Exception ignored) {
+                }
               }
               Spinner category = spinner(f, "Danh mục", Ledger.STANDARD_CATEGORIES);
               int categoryIndex = Ledger.STANDARD_CATEGORIES.indexOf(action.optString("category"));
@@ -1013,8 +1028,13 @@ public class MainActivity extends AppCompatActivity {
                         () -> {
                           Ledger.put(action, "amount", n);
                           Ledger.put(action, "fee", charge);
-                          Ledger.put(action, "account", source.getSelectedItem().toString());
-                          Ledger.put(action, "to", to.getSelectedItem().toString());
+                          String account = source.getSelectedItem().toString();
+                          Ledger.put(action, "account", account);
+                          if (List.of("expense", "card_purchase").contains(action.optString("type"))) {
+                            boolean card = ledger.account(account).optString("type").equals("card");
+                            Ledger.put(action, "type", card ? "card_purchase" : "expense");
+                          }
+                          if (to != null) Ledger.put(action, "to", to.getSelectedItem().toString());
                           Ledger.put(action, "category", category.getSelectedItem().toString());
                           Ledger.put(action, "note", note.getText().toString());
                           Ledger.put(action, "date", date.getText().toString());
@@ -1024,6 +1044,10 @@ public class MainActivity extends AppCompatActivity {
                   });
             })
         .show();
+  }
+
+  private boolean usesDestination(JSONObject action) {
+    return List.of("transfer", "card_payment").contains(action.optString("type"));
   }
 
   private Spinner spinner(LinearLayout f, String label, List<String> items) {
@@ -1346,7 +1370,7 @@ public class MainActivity extends AppCompatActivity {
   private void accountGroup(LinearLayout parent, String title, List<JSONObject> accounts) {
     if (accounts.isEmpty()) return;
     TextView heading = sectionText(title, 18, false);
-    heading.setTypeface(urbanist, android.graphics.Typeface.BOLD);
+    heading.setTypeface(appTypeface, android.graphics.Typeface.BOLD);
     ViewCompat.setAccessibilityHeading(heading, true);
     parent.addView(heading);
     for (JSONObject account : accounts) {
@@ -1377,7 +1401,7 @@ public class MainActivity extends AppCompatActivity {
       labels.setPadding(dp(12), 0, 0, 0);
       row.addView(labels, new LinearLayout.LayoutParams(0, -2, 1));
       TextView accountName = sectionText(name, 15, false);
-      accountName.setTypeface(urbanist, android.graphics.Typeface.BOLD);
+      accountName.setTypeface(appTypeface, android.graphics.Typeface.BOLD);
       labels.addView(accountName);
       String state =
           switch (kind) {
@@ -1390,7 +1414,7 @@ public class MainActivity extends AppCompatActivity {
           };
       labels.addView(sectionText(state, 12, true));
       TextView value = sectionText(bookMoney(ledger.balance(account.optString("id"))), 22, false);
-      value.setTypeface(urbanist, android.graphics.Typeface.BOLD);
+      value.setTypeface(appTypeface, android.graphics.Typeface.BOLD);
       labels.addView(value);
       MaterialButton options =
           iconButton(
@@ -1618,7 +1642,7 @@ public class MainActivity extends AppCompatActivity {
     LinearLayout labels = new LinearLayout(this);
     labels.setOrientation(LinearLayout.VERTICAL);
     TextView heading = compactText(title, 16, false);
-    heading.setTypeface(urbanist, android.graphics.Typeface.BOLD);
+    heading.setTypeface(appTypeface, android.graphics.Typeface.BOLD);
     heading.setMaxLines(stacked ? 2 : 1);
     heading.setEllipsize(android.text.TextUtils.TruncateAt.END);
     TextView supporting = compactText(subtitle, 13, true);
@@ -1628,7 +1652,7 @@ public class MainActivity extends AppCompatActivity {
         labels,
         stacked ? new LinearLayout.LayoutParams(-1, -2) : new LinearLayout.LayoutParams(0, -2, 1));
     TextView value = compactText(amount, 16, false);
-    value.setTypeface(urbanist, android.graphics.Typeface.BOLD);
+    value.setTypeface(appTypeface, android.graphics.Typeface.BOLD);
     value.setFontFeatureSettings("tnum");
     if (!stacked) value.setPadding(dp(12), 0, 0, 0);
     row.addView(value, new LinearLayout.LayoutParams(-2, -2));
@@ -1777,7 +1801,7 @@ public class MainActivity extends AppCompatActivity {
                   ? " · tiếp"
                   : "";
           TextView heading = text(dateLabel(day) + continuation, 14);
-          heading.setTypeface(urbanist, android.graphics.Typeface.BOLD);
+          heading.setTypeface(appTypeface, android.graphics.Typeface.BOLD);
           list.addView(heading);
         }
         String title =
@@ -1865,7 +1889,7 @@ public class MainActivity extends AppCompatActivity {
             fromBook ? bookMoney(event.optLong("amount")) : Ledger.money(event.optLong("amount")),
             28,
             false);
-    amount.setTypeface(urbanist, android.graphics.Typeface.BOLD);
+    amount.setTypeface(appTypeface, android.graphics.Typeface.BOLD);
     heading.addView(amount);
     receiptDetail(heading, dateLabel(event.optString("date")));
     String from = accountLabel(event.optString("account"));
@@ -2199,7 +2223,7 @@ public class MainActivity extends AppCompatActivity {
     trend.addView(chart);
     List<ReportChart.Amounts> monthly = monthlyReportTotals(year);
     if (monthly.stream().anyMatch(value -> value.expense() != 0 || value.income() != 0)) {
-      chart.addView(new ReportChart(this, monthly, urbanist));
+      chart.addView(new ReportChart(this, monthly, appTypeface));
     } else {
       TextView empty = sectionText("Chưa có số liệu thu chi trong năm này.", 14, true);
       empty.setPadding(dp(4), dp(8), dp(4), dp(8));
@@ -2255,7 +2279,7 @@ public class MainActivity extends AppCompatActivity {
     if (parent.getChildCount() > 0) caption.setPadding(0, dp(12), 0, 0);
     parent.addView(caption);
     TextView value = sectionText(amount, size, false);
-    value.setTypeface(urbanist, android.graphics.Typeface.BOLD);
+    value.setTypeface(appTypeface, android.graphics.Typeface.BOLD);
     value.setFontFeatureSettings("tnum");
     value.setTextColor(getColor(R.color.balance_card_on));
     parent.addView(value);
@@ -2340,7 +2364,7 @@ public class MainActivity extends AppCompatActivity {
     metric.setPadding(0, dp(4), dp(8), dp(4));
     metric.addView(sectionText(label, 13, true));
     TextView value = sectionText(Ledger.money(amount), 23, false);
-    value.setTypeface(urbanist, android.graphics.Typeface.BOLD);
+    value.setTypeface(appTypeface, android.graphics.Typeface.BOLD);
     metric.addView(value);
     parent.addView(
         metric,
@@ -2349,7 +2373,7 @@ public class MainActivity extends AppCompatActivity {
 
   private void sectionHeading(LinearLayout parent, String label) {
     TextView heading = sectionText(label, 17, false);
-    heading.setTypeface(urbanist, android.graphics.Typeface.BOLD);
+    heading.setTypeface(appTypeface, android.graphics.Typeface.BOLD);
     heading.setPadding(0, dp(8), 0, dp(4));
     ViewCompat.setAccessibilityHeading(heading, true);
     parent.addView(heading);

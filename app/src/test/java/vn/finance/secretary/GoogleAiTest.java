@@ -6,6 +6,32 @@ import org.json.*;
 import org.junit.Test;
 
 public class GoogleAiTest {
+  @Test
+  public void proposalUsesCardPurchaseForCardSourceWithoutWritingToLedger() {
+    Ledger ledger = new Ledger(new JSONObject());
+    ledger.addAccount("Techcombank everyday", "card", "tcb everyday");
+    ledger.addAccount("Techcombank", "bank", "tcb");
+    JSONObject card = Ledger.obj("type", "expense", "account", "tcb everyday", "amount", 133815);
+    JSONObject bank = Ledger.obj("type", "expense", "account", "tcb", "amount", 35000);
+
+    Assistant.prepareProposal(ledger, new JSONArray().put(card).put(bank), "proposal", "");
+
+    assertEquals("card_purchase", card.optString("type"));
+    assertEquals("expense", bank.optString("type"));
+    assertEquals(0, ledger.array("events").length());
+  }
+
+  @Test
+  public void proposalRejectsInvalidSourceBeforeConfirmation() {
+    Ledger ledger = new Ledger(new JSONObject());
+    JSONObject action = Ledger.obj("type", "expense", "account", "missing", "amount", 133815);
+
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> Assistant.prepareProposal(ledger, new JSONArray().put(action), "proposal", ""));
+    assertEquals(0, ledger.array("events").length());
+  }
+
   private JSONObject completion(String text, String reason) {
     return Ledger.obj(
         "candidates",
